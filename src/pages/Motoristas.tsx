@@ -1275,46 +1275,7 @@ export default function Motoristas() {
               </div>
             </div>
 
-            {/* Tipo do Motorista */}
-            <div className="space-y-2">
-              <Label htmlFor="tipo">Tipo do Motorista *</Label>
-              <Select
-                value={editedMotorista.tipo || "proprio"}
-                onValueChange={(value: "proprio" | "terceirizado") =>
-                  setEditedMotorista({ ...editedMotorista, tipo: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="proprio">Próprio</SelectItem>
-                  <SelectItem value="terceirizado">Terceirizado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Placa temporária: aparece apenas para terceirizados */}
-            {editedMotorista.tipo === 'terceirizado' && (
-              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                <Label htmlFor="placa_temporaria">Placa do Caminhão (Opcional)</Label>
-                <Input
-                  id="placa_temporaria"
-                  placeholder="Ex: ABC-1234"
-                  maxLength={8}
-                  value={editedMotorista.placa_temporaria || ""}
-                  onChange={(e) => {
-                    setEditedMotorista({ 
-                      ...editedMotorista, 
-                      placa_temporaria: e.target.value.toUpperCase() 
-                    });
-                  }}
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Essa placa ficará salva para facilitar o cadastro rápido do caminhão depois.
-                </p>
-              </div>
-            )}
+            
 
             {/* Data de Admissão */}
             <div className="space-y-2">
