@@ -21,107 +21,65 @@ import {
   PaginationPrevious,
   PaginationEllipsis,
 } from "@/components/ui/pagination";
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <>
-          {/* Mobile Pagination */}
-          <div className="mt-6 md:hidden">
-            <div className="flex items-center justify-between mb-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-              >
-                Anterior
-              </Button>
-              <span className="text-sm text-muted-foreground font-medium">
-                {currentPage} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Proxima
-              </Button>
-            </div>
-            <p className="text-xs text-center text-muted-foreground">
-              {filteredData.length} registros
-            </p>
-          </div>
+// Missing UI imports used across the component
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 
-          {/* Desktop Pagination */}
-          <div className="mt-6 hidden md:flex justify-center">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setCurrentPage(Math.max(1, currentPage - 1));
-                    }}
-                    className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                  />
-                </PaginationItem>
+// Icons
+import {
+  Lock,
+  Unlock,
+  FileText,
+  Clock,
+  TrendingDown,
+  TrendingUp,
+  Check,
+  Filter,
+  FileDown,
+  Plus,
+  Edit,
+  DollarSign,
+  Calendar,
+  Paperclip,
+  Download,
+  AlertCircle,
+  X,
+  Save,
+} from "lucide-react";
 
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                  const isCurrentPage = page === currentPage;
-                  const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
+// Utilities
+import { format, parse } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-                  if (!isVisible) {
-                    return null;
-                  }
-
-                  if (page === 2 && currentPage > 3) {
-                    return (
-                      <PaginationItem key="ellipsis-start">
-                        <PaginationEllipsis />
-                      </PaginationItem>
-                    );
-                  }
-
-                  if (page === totalPages - 1 && currentPage < totalPages - 2) {
-                    return (
-                      <PaginationItem key="ellipsis-end">
-                        <PaginationEllipsis />
-                      </PaginationItem>
-                    );
-                  }
-
-                  return (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        href="#"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setCurrentPage(page);
-                        }}
-                        isActive={isCurrentPage}
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  );
-                })}
-
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setCurrentPage(Math.min(totalPages, currentPage + 1));
-                    }}
-                    className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
-        </>
-      )}
+// PDF helpers
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { ApiResponse, Pagamento, Motorista, Frete, AtualizarPagamentoPayload, CriarPagamentoPayload } from "@/types";
+import pagamentosService from "@/services/pagamentos";
+import motoristasService from "@/services/motoristas";
+import * as fretesService from "@/services/fretes";
+import custosService from "@/services/custos";
+import { usePeriodoFilter } from "@/hooks/usePeriodoFilter";
+// locale imported above
 /*
  * 5. Ao salvar pagamento, os fretes selecionados são vinculados (recebem pagamentoId)
  * 6. Fretes pagos não aparecem mais na lista de disponíveis
@@ -379,22 +337,22 @@ const statusConfig = {
 export default function Pagamentos() {
   const queryClient = useQueryClient();
 
-  const { data: pagamentosResponse, isLoading: isLoadingPagamentos } = useQuery({
+  const { data: pagamentosResponse, isLoading: isLoadingPagamentos } = useQuery<ApiResponse<Pagamento[]>>({
     queryKey: ["pagamentos"],
     queryFn: pagamentosService.listarPagamentos,
   });
 
-  const { data: motoristasResponse } = useQuery({
+  const { data: motoristasResponse } = useQuery<ApiResponse<Motorista[]>>({
     queryKey: ["motoristas"],
     queryFn: motoristasService.listarMotoristas,
   });
 
-  const { data: fretesResponse } = useQuery({
+  const { data: fretesResponse } = useQuery<ApiResponse<Frete[]>>({
     queryKey: ["fretes"],
     queryFn: fretesService.listarFretes,
   });
 
-  const { data: custosResponse } = useQuery({
+  const { data: custosResponse } = useQuery<ApiResponse<any[]>>({
     queryKey: ["custos"],
     queryFn: custosService.listarCustos,
   });
