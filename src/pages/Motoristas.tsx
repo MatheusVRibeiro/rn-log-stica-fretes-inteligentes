@@ -1123,6 +1123,41 @@ export default function Motoristas() {
               />
             </div>
 
+            {/* Tipo e Placa Temporária (aparece logo abaixo de Nome/CPF) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="tipo">Tipo *</Label>
+                <Select
+                  value={editedMotorista.tipo || "proprio"}
+                  onValueChange={(value: "proprio" | "terceirizado") =>
+                    setEditedMotorista({ ...editedMotorista, tipo: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="proprio">Próprio</SelectItem>
+                    <SelectItem value="terceirizado">Terceirizado</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errosCampos.tipo && (
+                  <p className="text-sm text-red-500 dark:text-red-400">{errosCampos.tipo}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="placa_temporaria">Placa temporária</Label>
+                <Input
+                  id="placa_temporaria"
+                  placeholder="ABC1D23"
+                  value={editedMotorista.placa_temporaria || ""}
+                  onChange={(e) => setEditedMotorista({ ...editedMotorista, placa_temporaria: e.target.value })}
+                  disabled={editedMotorista.tipo === "proprio"}
+                />
+              </div>
+            </div>
+
             {/* Telefone e Email */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <InputMascarado
