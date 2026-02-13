@@ -122,6 +122,7 @@ import {
           </div>
         </>
       )}
+/*
  * 5. Ao salvar pagamento, os fretes selecionados são vinculados (recebem pagamentoId)
  * 6. Fretes pagos não aparecem mais na lista de disponíveis
  * 

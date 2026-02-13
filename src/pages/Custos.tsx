@@ -787,8 +787,10 @@ export default function Custos() {
             <DataTable<Custo>
               columns={columns}
               data={paginatedData.filter(c => c.tipo === "combustivel")}
-              {/* Pagination */}
-              {totalPages > 1 && (
+            />
+
+            {/* Pagination */}
+            {totalPages > 1 && (
                 <>
                   {/* Mobile Pagination */}
                   <div className="mt-6 md:hidden">
@@ -888,6 +890,7 @@ export default function Custos() {
                   </div>
                 </>
               )}
+            <DataTable<Custo>
               columns={columns}
               data={paginatedData.filter(c => c.tipo === "manutencao")}
               onRowClick={handleRowClick}

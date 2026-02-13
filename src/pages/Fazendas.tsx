@@ -777,8 +777,17 @@ export default function Fazendas() {
                       Último frete: <span className="font-medium">
                         {fazenda.ultimo_frete_data 
                           ? format(new Date(fazenda.ultimo_frete_data), "dd/MM/yyyy", { locale: ptBR })
-                          {/* Pagination */}
-                          {totalPages > 1 && (
+                          : "Nunca"}
+                        </span>
+                    </div>
+                  </div>
+                </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
                             <>
                               {/* Mobile Pagination */}
                               <div className="mt-6 md:hidden">
