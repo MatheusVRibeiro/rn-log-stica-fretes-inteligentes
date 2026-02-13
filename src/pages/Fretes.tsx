@@ -259,11 +259,8 @@ const caminhoesData: Caminhao[] = [
 ];
 
 const locaisEntregaFixos = [
-  "Matriz, Tupã SP",
-  "Filial 1, Tupã SP",
-  "Filial 2, Tupã SP",
-  "Filial 3 - MT",
-  "Filial 4, Tupã SP",
+  "Fazenda - Sta Rosa",
+  "Filial 01 - Secagem e Armazenamento",
 ];
 
 // Data demo de mercadorias com tarifas
@@ -1584,7 +1581,7 @@ export default function Fretes() {
                   <SelectTrigger>
                     <SelectValue placeholder="Selecionar" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-64 overflow-y-auto">
                     <SelectItem value="all">Todos</SelectItem>
                     {Array.isArray(motoristasState) && motoristasState.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
@@ -1620,7 +1617,7 @@ export default function Fretes() {
                   <SelectTrigger>
                     <SelectValue placeholder="Selecionar" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-64 overflow-y-auto">
                     <SelectItem value="all">Todas</SelectItem>
                     {fazendasOptions.map((f) => (
                       <SelectItem key={f} value={f}>
@@ -1734,7 +1731,7 @@ export default function Fretes() {
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Selecionar" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-64 overflow-y-auto">
               <SelectItem value="all">Todos</SelectItem>
               {Array.isArray(motoristasState) && motoristasState.map((m) => (
                 <SelectItem key={m.id} value={m.id}>
@@ -1766,7 +1763,7 @@ export default function Fretes() {
             <SelectTrigger className="w-44">
               <SelectValue placeholder="Selecionar" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-64 overflow-y-auto">
               <SelectItem value="all">Todas</SelectItem>
               {fazendasOptions.map((f) => (
                 <SelectItem key={f} value={f}>
@@ -2194,7 +2191,7 @@ export default function Fretes() {
                     <SelectTrigger id="fazenda">
                       <SelectValue placeholder="Selecione a fazenda produtora" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-64 overflow-y-auto">
                       {!Array.isArray(estoquesFazendas) || estoquesFazendas.length === 0 ? (
                         <SelectItem value="none" disabled>Nenhuma fazenda cadastrada</SelectItem>
                       ) : (
@@ -2320,7 +2317,7 @@ export default function Fretes() {
                     <SelectTrigger id="motorista">
                       <SelectValue placeholder="Selecione um motorista" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-64 overflow-y-auto">
                       {Array.isArray(motoristasState) && motoristasState.map((m) => {
                         const caminhaoFixo = caminhoesState.find(c => c.motorista_fixo_id === m.id);
                         return (

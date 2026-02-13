@@ -1141,7 +1141,7 @@ export default function Fazendas() {
                     <SelectTrigger id="safra">
                       <SelectValue placeholder="Selecione a safra" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-64 overflow-y-auto">
                       {opcoesSafra.map((safra) => (
                         <SelectItem key={safra} value={safra}>
                           {safra}

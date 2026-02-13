@@ -1443,7 +1443,7 @@ export default function Pagamentos() {
                   <SelectTrigger>
                     <SelectValue placeholder="Motorista" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-64 overflow-y-auto">
                     <SelectItem value="all">Todos</SelectItem>
                     {motoristas.map((motorista) => (
                       <SelectItem key={motorista.id} value={motorista.id}>
@@ -1534,7 +1534,7 @@ export default function Pagamentos() {
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Motorista" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-64 overflow-y-auto">
               <SelectItem value="all">Todos</SelectItem>
               {motoristas.map((motorista) => (
                 <SelectItem key={motorista.id} value={motorista.id}>
@@ -1935,7 +1935,7 @@ export default function Pagamentos() {
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um motorista" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-64 overflow-y-auto">
                   {motoristas.map((motorista) => (
                     <SelectItem key={motorista.id} value={motorista.id}>
                       {motorista.nome}

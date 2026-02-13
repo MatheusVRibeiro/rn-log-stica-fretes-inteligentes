@@ -543,7 +543,7 @@ export default function Custos() {
                   <SelectTrigger>
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-64 overflow-y-auto">
                     <SelectItem value="all">Todos os tipos</SelectItem>
                     <SelectItem value="combustivel">🛢️ Combustível</SelectItem>
                     <SelectItem value="manutencao">🔧 Manutenção</SelectItem>
@@ -558,7 +558,7 @@ export default function Custos() {
                   <SelectTrigger>
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-64 overflow-y-auto">
                     <SelectItem value="all">Todos motoristas</SelectItem>
                     {motoristas.map((m) => (
                       <SelectItem key={m} value={m}>{m}</SelectItem>
