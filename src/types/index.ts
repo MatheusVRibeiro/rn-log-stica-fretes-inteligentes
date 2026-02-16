@@ -66,8 +66,8 @@ export interface Motorista {
   tipo: "proprio" | "terceirizado";
   receita_gerada: number;
   viagens_realizadas: number;
-  data_admissao: string;
-  data_desligamento?: string | null;
+  // data_admissao removido
+  // data_desligamento removido
   caminhao_atual?: string;
   endereco?: string;
   veiculo_id?: string | null;

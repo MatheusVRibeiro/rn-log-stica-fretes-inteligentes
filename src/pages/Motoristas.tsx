@@ -48,6 +48,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, TrendingUp, Phone, Mail, Calendar, Truck, Edit, Save, X, MapPin, Award, CreditCard, Users, UserCheck, UserX, ShieldCheck, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { cleanPayload, emptyToNull } from "@/lib/utils";
 import type { Motorista } from "@/types";
 
 // Payload para criar motorista
@@ -193,6 +194,7 @@ export default function Motoristas() {
   const handleSave = async () => {
     const novosErros: Record<string, string> = {};
 
+    // Only require minimal fields for creation
     if (!editedMotorista.nome?.trim()) {
       novosErros.nome = "Nome é obrigatório";
     }
@@ -210,39 +212,7 @@ export default function Motoristas() {
       novosErros.tipo = "Tipo de motorista é obrigatório";
     }
 
-    if (!editedMotorista.status) {
-      novosErros.status = "Status é obrigatório";
-    }
-
-    if (!editedMotorista.cpf?.trim()) {
-      novosErros.cpf = "CPF é obrigatório";
-    } else {
-      const cpfLimpo = apenasNumeros(editedMotorista.cpf);
-      if (!validarCPF(cpfLimpo)) {
-        novosErros.cpf = "CPF inválido";
-      }
-    }
-
-    if (!editedMotorista.email?.trim()) {
-      novosErros.email = "E-mail é obrigatório";
-    } else if (!validarEmail(editedMotorista.email)) {
-      novosErros.email = "E-mail inválido";
-    }
-
-    if (!editedMotorista.cnh?.trim()) {
-      novosErros.cnh = "CNH é obrigatória";
-    } else if (!validarCNH(editedMotorista.cnh)) {
-      novosErros.cnh = "CNH deve ter 11 dígitos";
-    }
-
-    if (!editedMotorista.cnh_validade) {
-      novosErros.cnh_validade = "Validade da CNH é obrigatória";
-    }
-
-    if (!editedMotorista.cnh_categoria) {
-      novosErros.cnh_categoria = "Categoria da CNH é obrigatória";
-    }
-
+    // Conditional payment validation (keep as before)
     if (editedMotorista.tipo_pagamento === "pix") {
       if (!editedMotorista.chave_pix?.trim()) {
         novosErros.chave_pix = "Chave PIX é obrigatória";
@@ -273,43 +243,67 @@ export default function Motoristas() {
       return;
     }
 
-    const veiculoSelecionadoId = editedMotorista.veiculo_id || null;
+    // For terceirizados/agregados, ensure vehicle linked
+    if (editedMotorista.tipo !== 'proprio') {
+      if (!editedMotorista.veiculo_id) {
+        setErrosCampos({ veiculo_id: 'Vincule um veículo disponível' });
+        toast.error('Vincule um veículo disponível para motoristas terceirizados');
+        return;
+      }
+      const existe = caminhoesState.some((v) => String(v.id) === String(editedMotorista.veiculo_id));
+      if (!existe) {
+        setErrosCampos({ veiculo_id: 'Veículo inválido. Selecione um veículo disponível' });
+        toast.error('Veículo inválido. Selecione um veículo disponível');
+        return;
+      }
+    }
 
-    const payloadBase: CriarMotoristaPayload = {
+    // Build minimal payload for creation
+    const payload: Record<string, any> = {
       nome: editedMotorista.nome?.trim() || "",
-      cpf: apenasNumeros(editedMotorista.cpf || ""),
       telefone: apenasNumeros(editedMotorista.telefone || ""),
-      email: editedMotorista.email?.trim() || "",
-      cnh: apenasNumeros(editedMotorista.cnh || ""),
-      cnh_validade: editedMotorista.cnh_validade || "",
-      cnh_categoria: editedMotorista.cnh_categoria || "D",
-      tipo: editedMotorista.tipo as "proprio" | "terceirizado" | "agregado",
-      endereco: editedMotorista.endereco || null,
+      tipo: editedMotorista.tipo,
       status: editedMotorista.status || "ativo",
-      tipo_pagamento: editedMotorista.tipo_pagamento,
-      chave_pix_tipo: editedMotorista.tipo_pagamento === "pix" ? editedMotorista.chave_pix_tipo || "cpf" : null,
-      chave_pix: editedMotorista.tipo_pagamento === "pix"
-        ? ((editedMotorista.chave_pix_tipo === "cpf" && editedMotorista.chave_pix)
-          ? apenasNumeros(editedMotorista.chave_pix)
-          : editedMotorista.chave_pix || null)
-        : null,
-      banco: editedMotorista.tipo_pagamento === "transferencia_bancaria" ? editedMotorista.banco || null : null,
-      agencia: editedMotorista.tipo_pagamento === "transferencia_bancaria" ? editedMotorista.agencia || null : null,
-      conta: editedMotorista.tipo_pagamento === "transferencia_bancaria" ? editedMotorista.conta || null : null,
-      tipo_conta: editedMotorista.tipo_pagamento === "transferencia_bancaria" ? editedMotorista.tipo_conta || "corrente" : null,
+      tipo_pagamento: editedMotorista.tipo_pagamento || 'pix',
     };
 
-    const payload = Object.fromEntries(
-      Object.entries(payloadBase).map(([key, value]) => {
-        if (["endereco", "chave_pix", "banco", "agencia", "conta", "tipo_conta", "chave_pix_tipo"].includes(key)) {
-          return [key, value === "" ? null : value];
-        }
-        return [key, value];
-      })
-    ) as CriarMotoristaPayload;
+    if (editedMotorista.tipo !== 'proprio') {
+      payload.veiculo_id = editedMotorista.veiculo_id === "none" ? null : editedMotorista.veiculo_id;
+    } else {
+      payload.veiculo_id = null;
+    }
+
+    // Payment normalization
+    if (payload.tipo_pagamento === 'pix') {
+      payload.banco = null;
+      payload.agencia = null;
+      payload.conta = null;
+      payload.tipo_conta = null;
+      payload.chave_pix_tipo = editedMotorista.chave_pix_tipo || 'cpf';
+      payload.chave_pix = editedMotorista.chave_pix ? (editedMotorista.chave_pix_tipo === 'cpf' ? apenasNumeros(editedMotorista.chave_pix) : editedMotorista.chave_pix) : null;
+    } else if (payload.tipo_pagamento === 'transferencia_bancaria') {
+      payload.banco = editedMotorista.banco || null;
+      payload.agencia = editedMotorista.agencia || null;
+      payload.conta = editedMotorista.conta || null;
+      payload.chave_pix = null;
+      payload.chave_pix_tipo = null;
+    }
+
+    // Clean payload and convert empty strings to null for specific keys
+
+    // Limpeza final: transforma '' em null para todos os campos
+    const finalPayload = emptyToNull(payload);
+    // Remove veiculo_id se for 'none'
+    if (finalPayload.veiculo_id === 'none') {
+      delete finalPayload.veiculo_id;
+    }
 
     try {
-      const res = await motoristasService.criarMotorista(payload);
+      // Remover veiculo_id do payload antes de criar motorista (não existe na tabela motoristas)
+      if ('veiculo_id' in finalPayload) {
+        delete finalPayload.veiculo_id;
+      }
+      const res = await motoristasService.criarMotorista(finalPayload);
 
       if (res.success && res.data) {
         const motoristaCriadoId = res.data.id;
@@ -457,10 +451,7 @@ export default function Motoristas() {
           <Badge variant={statusConfig[item.status].variant} className="font-semibold w-fit">
             {statusConfig[item.status].label}
           </Badge>
-          <div className="flex items-center gap-2">
-            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Admissão: {formatarDataBrasileira(item.data_admissao)}</span>
-          </div>
+          {/* Admissão removida */}
         </div>
       ),
     },
@@ -915,8 +906,7 @@ export default function Motoristas() {
                   </p>
                 </Card>
                 <Card className="p-4 bg-muted/50">
-                  <p className="text-sm text-muted-foreground mb-2">Admissão</p>
-                  <p className="text-lg font-bold">{formatarDataBrasileira(selectedMotorista.data_admissao)}</p>
+                  {/* Admissão removida */}
                 </Card>
               </div>
 

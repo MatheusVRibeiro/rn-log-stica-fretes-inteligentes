@@ -1,3 +1,13 @@
+// Remove chaves com valor undefined, null ou string vazia
+export function cleanPayload<T extends Record<string, any>>(obj: T): Partial<T> {
+  const out: Partial<T> = {};
+  Object.entries(obj).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") {
+      out[k as keyof T] = v;
+    }
+  });
+  return out;
+}
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -18,10 +28,16 @@ export function formatPlaca(raw?: any) {
 }
 
 // Convert specific empty-string keys to null in an object
-export function emptyToNull(obj: Record<string, any>, keys: string[]) {
+export function emptyToNull(obj: Record<string, any>, keys?: string[]) {
   const out = { ...obj };
-  keys.forEach((k) => {
-    if (Object.prototype.hasOwnProperty.call(out, k) && out[k] === '') out[k] = null;
-  });
+  if (Array.isArray(keys)) {
+    keys.forEach((k) => {
+      if (Object.prototype.hasOwnProperty.call(out, k) && out[k] === '') out[k] = null;
+    });
+  } else {
+    Object.keys(out).forEach((k) => {
+      if (out[k] === '') out[k] = null;
+    });
+  }
   return out;
 }
