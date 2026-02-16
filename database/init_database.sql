@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Script Master de Inicialização do Banco de Dados
--- RN Logística - Sistema de Gestão de Fretes
+-- Caramello Logistica - Sistema de Gestão de Fretes
 -- =============================================================================
 -- Este script inicializa todas as tabelas do sistema na ordem correta,
 -- respeitando as dependências de Foreign Keys.
@@ -126,4 +126,4 @@ SHOW TABLES;
 -- 6. Criar views úteis (comentadas em cada arquivo)
 -- =============================================================================
 
-SELECT 'Banco de dados RN Logística inicializado com sucesso!' AS Status;
+SELECT 'Banco de dados Caramello Logistica inicializado com sucesso!' AS Status;

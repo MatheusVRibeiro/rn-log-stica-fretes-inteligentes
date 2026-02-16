@@ -544,7 +544,7 @@ export default function Pagamentos() {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
     doc.setFont("helvetica", "bold");
-    doc.text("RN LOGÍSTICA", 105, 18, { align: "center" });
+    doc.text("Caramello Logistica", 105, 18, { align: "center" });
     
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
@@ -873,7 +873,7 @@ export default function Pagamentos() {
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 116, 139);
       
-      doc.text("RN Logistica - Sistema de Gestao de Fretes", 20, 285);
+      doc.text("Caramello Logistica - Sistema de Gestao de Fretes", 20, 285);
       doc.text(`Pagina ${i} de ${pageCount}`, 105, 285, { align: "center" });
       doc.text(`Relatorio Confidencial`, 190, 285, { align: "right" });
       
@@ -883,7 +883,7 @@ export default function Pagamentos() {
     }
     
     // ==================== DOWNLOAD ====================
-    const nomeArquivo = `RN_Logistica_Pagamentos_${selectedPeriodo.replace("-", "_")}.pdf`;
+    const nomeArquivo = `Caramello_Logistica_Pagamentos_${selectedPeriodo.replace("-", "_")}.pdf`;
     doc.save(nomeArquivo);
     toast.success(`PDF "${nomeArquivo}" gerado com sucesso!`, { duration: 4000 });
   };

@@ -1220,15 +1220,15 @@ export default function Custos() {
             <div className="space-y-2">
               <Label htmlFor="frete_id">Frete *</Label>
               <Select
-                value={formData.frete_id || ""}
-                onValueChange={(value) => setFormData({ ...formData, frete_id: value })}
+                value={formData.frete_id ?? 'none'}
+                onValueChange={(value) => setFormData({ ...formData, frete_id: value === 'none' ? null : value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o frete" />
                 </SelectTrigger>
                 <SelectContent>
                   {fretes.length === 0 ? (
-                    <SelectItem value="" disabled>
+                    <SelectItem value="none" disabled>
                       Nenhum frete disponivel
                     </SelectItem>
                   ) : (

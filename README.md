@@ -1,18 +1,18 @@
-# Bem-vindo ao projeto RN Logistica
+# Bem-vindo ao projeto Caramello Logistica
 
 ## Informacoes do projeto
 
-**URL**: https://rnlogistica.com
+**URL**: https://caramello-logistica.com
 
 ## Como posso editar este codigo?
 
 Existem varias formas de editar sua aplicacao.
 
-**Use o RN Logistica**
+**Use o Caramello Logistica**
 
-Basta visitar o site do projeto RN Logistica e comecar a fazer solicitacoes.
+Basta visitar o site do projeto Caramello Logistica e comecar a fazer solicitacoes.
 
-Alteracoes feitas via RN Logistica serao commitadas automaticamente neste repositorio.
+Alteracoes feitas via Caramello Logistica serao commitadas automaticamente neste repositorio.
 
 **Use seu IDE preferido**
 

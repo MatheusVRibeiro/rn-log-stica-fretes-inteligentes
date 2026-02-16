@@ -1,5 +1,6 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "caramello-logistica",
+  "description": "Caramello Logistica - Sistema de Gestão de Fretes",
   "private": true,
   "version": "0.0.0",
   "type": "module",

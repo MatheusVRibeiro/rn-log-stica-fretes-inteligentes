@@ -301,7 +301,7 @@ export default function Fazendas() {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.setTextColor(255, 255, 255);
-    doc.text("RN LOGÍSTICA", 14, 18);
+    doc.text("Caramello Logistica", 14, 18);
 
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
@@ -448,7 +448,7 @@ export default function Fazendas() {
     doc.line(14, 285, 196, 285);
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
-    doc.text("RN Logistica - Sistema de Gestao de Fretes", 14, 288);
+    doc.text("Caramello Logistica - Sistema de Gestao de Fretes", 14, 288);
     doc.text("Pagina 1 de 1", 105, 288, { align: "center" });
     doc.text("Relatorio Confidencial", 196, 288, { align: "right" });
 
@@ -456,7 +456,7 @@ export default function Fazendas() {
     doc.setTextColor(148, 163, 184);
     doc.text("Este documento foi gerado automaticamente e contem informacoes confidenciais", 105, 292, { align: "center" });
 
-    const nomeArquivo = `RN_Logistica_Producao_${fazenda.fazenda.replace(/\s+/g, "_")}.pdf`;
+    const nomeArquivo = `Caramello_Logistica_Producao_${fazenda.fazenda.replace(/\s+/g, "_")}.pdf`;
     doc.save(nomeArquivo);
     toast.success(`PDF "${nomeArquivo}" gerado com sucesso!`);
   };
@@ -1047,22 +1047,33 @@ export default function Fazendas() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="mercadoria">Tipo de Mercadoria *</Label>
-                  <Input
-                    id="mercadoria"
-                    placeholder="Ex: Amendoim em Casca"
+                  <Select
                     value={newProducao.mercadoria}
-                    onChange={(e) => setNewProducao({ ...newProducao, mercadoria: e.target.value })}
-                  />
+                    onValueChange={(value) => setNewProducao({ ...newProducao, mercadoria: value })}
+                  >
+                    <SelectTrigger id="mercadoria">
+                      <SelectValue placeholder="Selecione a mercadoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Amendoim em Casca">Amendoim em Casca</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="variedade">Variedade/Cor *</Label>
-                  <Input
-                    id="variedade"
-                    placeholder="Ex: Verde, Vermelho, Runner"
+                  <Select
                     value={newProducao.variedade}
-                    onChange={(e) => setNewProducao({ ...newProducao, variedade: e.target.value })}
-                  />
+                    onValueChange={(value) => setNewProducao({ ...newProducao, variedade: value })}
+                  >
+                    <SelectTrigger id="variedade">
+                      <SelectValue placeholder="Selecione a variedade/cor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Verde">Verde</SelectItem>
+                      <SelectItem value="Seco">Seco</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">

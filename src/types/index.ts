@@ -70,7 +70,7 @@ export interface Motorista {
   data_desligamento?: string | null;
   caminhao_atual?: string;
   endereco?: string;
-  placa_temporaria?: string; // placa pendente vinculada ao motorista (pré-cadastro)
+  veiculo_id?: string | null;
   // Dados Bancários
   tipo_pagamento?: "pix" | "transferencia_bancaria";
   chave_pix_tipo?: "cpf" | "email" | "telefone" | "aleatoria";
@@ -137,6 +137,8 @@ export interface ApiResponse<T = any> {
   success: boolean;
   data: T | null;
   message?: string;
+  // HTTP status code when available (useful for service-to-UI mapping)
+  status?: number;
 }
 
 export interface Fazenda {

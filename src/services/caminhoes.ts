@@ -1,4 +1,5 @@
 import api from "@/api/axios";
+import { isAxiosError } from "axios";
 import type { ApiResponse, Caminhao, CriarCaminhaoPayload } from "@/types";
 
 export async function listarCaminhoes(): Promise<ApiResponse<Caminhao[]>> {
@@ -8,17 +9,26 @@ export async function listarCaminhoes(): Promise<ApiResponse<Caminhao[]>> {
     // Então res.data.data contém o array de caminhões
     return { success: true, data: res.data.data || res.data };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao listar caminhões";
+    let message = "Erro ao listar caminhões";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 }
 
 export async function criarCaminhao(payload: CriarCaminhaoPayload): Promise<ApiResponse<Caminhao>> {
   try {
+    console.debug("POST /frota payload:", payload);
     const res = await api.post("/frota", payload);
     return { success: true, data: res.data.data || res.data };
-  } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao criar caminhão";
+  } catch (err: any) {
+    console.error("Erro em criarCaminhao:", err?.response?.data ?? err);
+    const message = err?.response?.data?.message ?? err?.message ?? "Erro ao criar caminhão";
     return { success: false, data: null, message };
   }
 }
@@ -28,7 +38,14 @@ export async function atualizarCaminhao(id: string, payload: Partial<CriarCaminh
     const res = await api.put(`/frota/${id}`, payload);
     return { success: true, data: res.data.data || res.data };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao atualizar caminhão";
+    let message = "Erro ao atualizar caminhão";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 }
@@ -38,7 +55,14 @@ export async function deletarCaminhao(id: string): Promise<ApiResponse<void>> {
     await api.delete(`/frota/${id}`);
     return { success: true, data: null };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao deletar caminhão";
+    let message = "Erro ao deletar caminhão";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 }

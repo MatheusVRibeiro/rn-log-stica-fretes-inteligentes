@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import caminhoesService from "@/services/caminhoes";
 import motoristasService from "@/services/motoristas";
 import type { Caminhao, CriarCaminhaoPayload, Motorista } from "@/types";
+import { formatPlaca, emptyToNull } from "@/lib/utils";
 
 const statusConfig = {
   disponivel: { label: "Disponível", variant: "active" as const },
@@ -72,35 +73,49 @@ export default function Frota() {
 
   const caminhoes = caminhoesResponse?.data || [];
   const motoristasDisponiveis = motoristasResponse?.data || [];
+  const [autoFilledFields, setAutoFilledFields] = useState<{ placa?: boolean; motorista?: boolean; proprietario_tipo?: boolean }>({});
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // Plate helpers usable across handlers
+  const normalizePlate = (p?: string) => (p ? p.trim().toUpperCase() : "");
+  const stripNonAlnum = (s: string) => s.replace(/[^A-Z0-9]/gi, "");
+  const formatPlateWithDash = (p?: string) => {
+    if (!p) return "";
+    const up = normalizePlate(p);
+    if (/^[A-Z]{3}-\d{4}$/.test(up)) return up;
+    const clean = stripNonAlnum(up);
+    if (/^[A-Z]{3}\d[A-Z]\d{2}$/.test(clean)) {
+      return `${clean.slice(0,3)}-${clean.slice(3)}`;
+    }
+    if (/^[A-Z]{3}\d{4}$/.test(clean)) {
+      return `${clean.slice(0,3)}-${clean.slice(3)}`;
+    }
+    return up;
+  };
+
+  // Autoformat while typing: insert dash after 3 chars for plate-like inputs
+  const formatPlateAsUserTypes = (value: string) => {
+    const clean = stripNonAlnum(value.toUpperCase());
+    if (clean.length <= 3) return clean;
+    return `${clean.slice(0,3)}-${clean.slice(3, 7)}`;
+  };
+  const isValidPlate = (p?: string) => {
+    if (!p) return false;
+    const plate = normalizePlate(p);
+    return /^[A-Z]{3}-\d{4}$/.test(plate) || /^[A-Z]{3}-?\d[A-Z]\d{2}$/.test(plate);
+  };
 
   // Mutation para criar caminhão
   const criarMutation = useMutation({
     mutationFn: caminhoesService.criarCaminhao,
     onSuccess: (response) => {
       if (response.success) {
-        toast.success("Caminhão cadastrado com sucesso!");
-        // Caso a placa cadastrada corresponda a uma `placa_temporaria` de algum motorista,
-        // limpamos esse campo no motorista para indicar que a placa foi associada.
-        const createdPlaca = response.data?.placa;
-        if (createdPlaca) {
-          const motorista = motoristasDisponiveis.find(m => m.placa_temporaria === createdPlaca);
-          if (motorista) {
-            motoristasService.atualizarMotorista(motorista.id, { placa_temporaria: null })
-              .then((res) => {
-                if (res.success) {
-                  queryClient.invalidateQueries({ queryKey: ["motoristas"] });
-                }
-              })
-              .catch(() => {
-                // não bloquear o fluxo principal se a limpeza falhar
-              });
-          }
+          toast.success("Caminhão cadastrado com sucesso!");
+          queryClient.invalidateQueries({ queryKey: ["caminhoes"] });
+          setIsModalOpen(false);
+        } else {
+          toast.error(response.message || "Erro ao cadastrar caminhão");
         }
-        queryClient.invalidateQueries({ queryKey: ["caminhoes"] });
-        setIsModalOpen(false);
-      } else {
-        toast.error(response.message || "Erro ao cadastrar caminhão");
-      }
     },
     onError: () => {
       toast.error("Erro ao cadastrar caminhão");
@@ -130,8 +145,8 @@ export default function Frota() {
       placa: "",
       placa_carreta: "",
       modelo: "",
-      ano_fabricacao: new Date().getFullYear(),
-      capacidade_toneladas: 0,
+      ano_fabricacao: undefined,
+      capacidade_toneladas: undefined,
       status: "disponivel",
       km_atual: 0,
       motorista_fixo_id: "",
@@ -148,8 +163,11 @@ export default function Frota() {
     });
     setIsEditing(false);
     setSelectedCaminhao(null);
+    setAutoFilledFields({});
     setIsModalOpen(true);
   };
+
+  
 
   const handleOpenEditModal = (caminhao: Caminhao) => {
     // Converter campos da API para o formato do formulário
@@ -175,17 +193,96 @@ export default function Frota() {
     });
     setIsEditing(true);
     setSelectedCaminhao(null); // Limpa o modal de detalhes
+    setAutoFilledFields({});
     setIsModalOpen(true);
   };
 
   const handleSave = () => {
+    // Simple client-side validation to avoid 400 from backend
+    const normalizePlate = (p?: string) => (p ? p.trim().toUpperCase() : "");
+    const stripNonAlnum = (s: string) => s.replace(/[^A-Z0-9]/gi, "");
+    const isValidPlate = (p?: string) => {
+      if (!p) return false;
+      const plate = normalizePlate(p);
+      // Accept traditional format ABC-1234 and Mercosul-like (with or without dash) ABC1D23 or ABC-1D23
+      const regexOld = /^[A-Z]{3}-\d{4}$/;
+      const regexMercosul = /^[A-Z]{3}-?\d[A-Z]\d{2}$/;
+      return regexOld.test(plate) || regexMercosul.test(plate);
+    };
+
+    const formatPlateWithDash = (p?: string) => {
+      if (!p) return "";
+      const up = normalizePlate(p);
+      // If already in old format ABC-1234 keep it
+      if (/^[A-Z]{3}-\d{4}$/.test(up)) return up;
+      // For mercosul-like, remove non-alnum then insert dash after 3 chars: ABC1D23 -> ABC-1D23
+      const clean = stripNonAlnum(up);
+      if (/^[A-Z]{3}\d[A-Z]\d{2}$/.test(clean)) {
+        return `${clean.slice(0,3)}-${clean.slice(3)}`;
+      }
+      // Fallback: return uppercased input
+      return up;
+    };
+
+    setFormErrors({});
+    const placaNorm = formatPlateWithDash(editedCaminhao.placa as string);
+    if (!placaNorm || !isValidPlate(placaNorm)) {
+      setFormErrors({ placa: "Placa inválida. Use formato ABC-1234 ou BWJ-9B60 (Mercosul)." });
+      return;
+    }
+
+    const placaCarreta = formatPlateWithDash(editedCaminhao.placa_carreta as string);
+    if (editedCaminhao.placa_carreta && !isValidPlate(placaCarreta)) {
+      setFormErrors({ placa_carreta: "Placa da carreta inválida." });
+      return;
+    }
+
+    // Capacidade é opcional (backend aceita null). Valida apenas quando preenchida.
+    let capacidadeNormalized: number | null = null;
+    if (editedCaminhao.capacidade_toneladas !== undefined && editedCaminhao.capacidade_toneladas !== null && String(editedCaminhao.capacidade_toneladas).trim() !== "") {
+      const num = Number(editedCaminhao.capacidade_toneladas);
+      if (!(num > 0)) {
+        setFormErrors({ capacidade_toneladas: "Capacidade deve ser maior que 0" });
+        return;
+      }
+      capacidadeNormalized = num;
+    } else {
+      capacidadeNormalized = null;
+    }
+
+    const payload: CriarCaminhaoPayload = {
+      placa: placaNorm as string,
+      modelo: editedCaminhao.modelo as string,
+      ano_fabricacao: editedCaminhao.ano_fabricacao as number,
+      capacidade_toneladas: capacidadeNormalized as number,
+      tipo_veiculo: editedCaminhao.tipo_veiculo as any,
+      status: editedCaminhao.status || "disponivel",
+      km_atual: editedCaminhao.km_atual || 0,
+      tipo_combustivel: editedCaminhao.tipo_combustivel,
+      motorista_fixo_id: editedCaminhao.motorista_fixo_id || undefined,
+      proprietario_tipo: editedCaminhao.proprietario_tipo,
+      renavam: editedCaminhao.renavam || undefined,
+      chassi: editedCaminhao.chassi || undefined,
+      registro_antt: editedCaminhao.registro_antt || undefined,
+      validade_seguro: editedCaminhao.validade_seguro || undefined,
+      validade_licenciamento: editedCaminhao.validade_licenciamento || undefined,
+      ultima_manutencao_data: editedCaminhao.ultima_manutencao_data || undefined,
+      proxima_manutencao_km: editedCaminhao.proxima_manutencao_km || undefined,
+      placa_carreta: (editedCaminhao.tipo_veiculo && ["CARRETA", "BITREM", "TRUCK"].includes(editedCaminhao.tipo_veiculo as string)) ? (placaCarreta || undefined) : undefined,
+    };
+
+    // Normalize optional empty strings to null before sending
+    const cleaned = emptyToNull(payload as Record<string, any>, [
+      'placa_carreta','renavam','chassi','registro_antt','validade_seguro','validade_licenciamento'
+    ]);
+
     if (isEditing && selectedCaminhao) {
       editarMutation.mutate({
         id: selectedCaminhao.id,
-        payload: editedCaminhao,
+        payload: cleaned as any,
       });
     } else {
-      criarMutation.mutate(editedCaminhao as CriarCaminhaoPayload);
+      criarMutation.mutate(cleaned as any);
     }
   };
 
@@ -207,6 +304,13 @@ export default function Frota() {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, statusFilter]);
+
+  // Limpar marcação de auto-filled quando modal fechar
+  useEffect(() => {
+    if (!isModalOpen) {
+      setAutoFilledFields({});
+    }
+  }, [isModalOpen]);
 
   const getMaintenanceStatus = (km: number, proxima: number) => {
     const percentual = (km / proxima) * 100;
@@ -236,43 +340,41 @@ export default function Frota() {
     {
       key: "placa",
       header: "Veículo",
-      render: (item: Caminhao) => (
-        <div className="flex items-start gap-2 py-1">
-          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center flex-shrink-0 hover:from-primary/30 hover:to-primary/20 transition-all shadow-sm">
-            <Truck className="h-5 w-5 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-mono font-bold text-base text-foreground tracking-wide">{item.placa}</p>
-              {item.placa_carreta && (
-                <>
-                  <span className="text-muted-foreground font-bold">+</span>
-                  <p className="font-mono font-bold text-base text-blue-600 dark:text-blue-400 tracking-wide">{item.placa_carreta}</p>
-                </>
-              )}
+      render: (item: Caminhao) => {
+        return (
+          <div className="flex items-start gap-2 py-1">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center flex-shrink-0 hover:from-primary/30 hover:to-primary/20 transition-all shadow-sm">
+              <Truck className="h-5 w-5 text-primary" />
             </div>
-            <p className="text-xs text-muted-foreground font-medium">{item.modelo}</p>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Badge variant="outline" className="text-[10px] font-semibold py-0 px-2">
-                {item.ano_fabricacao}
-              </Badge>
-              {item.tipo_veiculo && (
-                <Badge variant="secondary" className="text-[10px] py-0 px-2">
-                  {item.tipo_veiculo}
-                </Badge>
-              )}
-              {item.proprietario_tipo && (
-                <Badge 
-                  variant={item.proprietario_tipo === "PROPRIO" ? "default" : "outline"}
-                  className="text-xs"
-                >
-                  {item.proprietario_tipo}
-                </Badge>
-              )}
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-mono font-bold text-base text-foreground tracking-wide">{item.placa}</p>
+                {item.placa_carreta ? (
+                  <Badge className="text-xs font-mono">{item.placa_carreta}</Badge>
+                ) : null}
+                <p className="text-xs text-muted-foreground font-medium">{item.modelo}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {formErrors.placa ? (
+                  <p className="text-sm text-red-500 mr-2">{formErrors.placa}</p>
+                ) : null}
+                <span className="text-xs text-muted-foreground">{item.ano_fabricacao}</span>
+                {item.tipo_veiculo ? (
+                  <Badge variant="secondary" className="text-[10px] py-0 px-2 ml-2">{item.tipo_veiculo}</Badge>
+                ) : null}
+                {item.proprietario_tipo ? (
+                  <Badge
+                    variant={item.proprietario_tipo === "PROPRIO" ? "default" : "outline"}
+                    className="text-xs ml-2"
+                  >
+                    {item.proprietario_tipo}
+                  </Badge>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       key: "status",
@@ -968,65 +1070,26 @@ export default function Frota() {
               
               {/* Placas e Modelo */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Sugestões de Placas Pendentes (pré-cadastro) */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Info className="h-4 w-4 text-primary" />
-                    Placas Pendentes
-                  </Label>
-                  <Select
-                    value={editedCaminhao.placa || "___none___"}
-                    onValueChange={(value) => {
-                      if (value === "___none___") {
-                        // não alterar
-                        setEditedCaminhao({ ...editedCaminhao });
-                        return;
-                      }
-                      // encontrar motorista que possui essa placa temporária
-                      const motorista = motoristasDisponiveis.find(m => m.placa_temporaria === value);
-                      setEditedCaminhao({
-                        ...editedCaminhao,
-                        placa: value,
-                        motorista_fixo_id: motorista ? motorista.id : editedCaminhao.motorista_fixo_id,
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sugerir placa pendente (opcional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="___none___">Nenhuma sugestão</SelectItem>
-                      {motoristasDisponiveis
-                        .filter(m => m.placa_temporaria && m.placa_temporaria.trim() !== "")
-                        .map((m) => (
-                          <SelectItem key={m.id} value={m.placa_temporaria!}>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold">{m.placa_temporaria}</span>
-                              <div className="flex flex-col text-sm text-muted-foreground">
-                                <span className="font-semibold">{m.nome}</span>
-                                <span className="text-xs">{m.telefone}</span>
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Selecione para preencher automaticamente a placa e vincular o motorista sugerido.</p>
-                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="placa" className="flex items-center gap-2">
                     <Info className="h-4 w-4 text-primary" />
-                    Placa do Cavalo *
+                    Placa *
                   </Label>
                   <Input
                     id="placa"
                     placeholder="ABC-1234"
-                    className="font-mono font-semibold"
                     value={editedCaminhao.placa || ""}
-                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, placa: e.target.value.toUpperCase() })}
+                    className={`font-mono font-semibold ${autoFilledFields.placa ? 'bg-blue-50 dark:bg-blue-900/40' : ''}`}
+                    onChange={(e) => {
+                      const value = e.target.value.toUpperCase();
+                      setEditedCaminhao({ ...editedCaminhao, placa: value });
+                      // limpar marcação de auto-fill quando usuário digita manualmente
+                      setAutoFilledFields({});
+                    }}
                   />
                   <p className="text-xs text-muted-foreground">Placa do caminhão trator</p>
+                  
                 </div>
                 
                 {/* Placa da Carreta - Mostrada apenas para tipos que precisam */}
@@ -1094,15 +1157,23 @@ export default function Frota() {
                     <CalendarDays className="h-4 w-4 text-primary" />
                     Ano *
                   </Label>
-                  <Input
-                    id="anoFabricacao"
-                    placeholder="2020"
-                    type="number"
-                    min="1990"
-                    max={new Date().getFullYear()}
-                    value={editedCaminhao.ano_fabricacao || ""}
-                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, ano_fabricacao: parseInt(e.target.value) || new Date().getFullYear() })}
-                  />
+                  <Select
+                    value={(editedCaminhao.ano_fabricacao ? String(editedCaminhao.ano_fabricacao) : "")}
+                    onValueChange={(value) => setEditedCaminhao({ ...editedCaminhao, ano_fabricacao: value ? parseInt(value) : undefined })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o ano" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(() => {
+                        const startYear = 1970;
+                        const current = new Date().getFullYear();
+                        return Array.from({ length: current - startYear + 1 }, (_, i) => current - i).map((yr) => (
+                          <SelectItem key={yr} value={String(yr)}>{yr}</SelectItem>
+                        ));
+                      })()}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="capacidadeToneladas" className="flex items-center gap-2">
@@ -1116,10 +1187,16 @@ export default function Frota() {
                       placeholder="40"
                       min="1"
                       value={editedCaminhao.capacidade_toneladas || ""}
-                      onChange={(e) => setEditedCaminhao({ ...editedCaminhao, capacidade_toneladas: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => {
+                        setEditedCaminhao({ ...editedCaminhao, capacidade_toneladas: parseFloat(e.target.value) || 0 });
+                        setFormErrors(prev => { const n = { ...prev }; delete n.capacidade_toneladas; return n; });
+                      }}
                     />
                     <span className="text-sm font-semibold text-muted-foreground whitespace-nowrap">ton</span>
                   </div>
+                  {formErrors.capacidade_toneladas && (
+                    <p className="text-sm text-red-500">{formErrors.capacidade_toneladas}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="kmAtual" className="flex items-center gap-2">
@@ -1166,126 +1243,7 @@ export default function Frota() {
 
             <Separator className="my-4" />
 
-            {/* Seção: Documentação e Fiscal */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="h-1 w-1 rounded-full bg-primary" />
-                <h3 className="font-semibold text-foreground">Documentação e Fiscal</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="renavam" className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-primary" />
-                    RENAVAM do Cavalo
-                  </Label>
-                  <Input
-                    id="renavam"
-                    placeholder="12345678901"
-                    className="font-mono"
-                    maxLength={20}
-                    value={editedCaminhao.renavam || ""}
-                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, renavam: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">RENAVAM do caminhão trator</p>
-                </div>
-                {editedCaminhao.tipo_veiculo && ["CARRETA", "BITREM", "TRUCK"].includes(editedCaminhao.tipo_veiculo) && (
-                  <div className="space-y-2">
-                    <Label htmlFor="placa_carreta_ref" className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-blue-600" />
-                      Placa da Carreta (Referência)
-                    </Label>
-                    <Input
-                      id="placa_carreta_ref"
-                      placeholder="DEF5678"
-                      className="font-mono"
-                      maxLength={20}
-                      value={editedCaminhao.placa_carreta || ""}
-                      onChange={(e) => setEditedCaminhao({ ...editedCaminhao, placa_carreta: e.target.value.toUpperCase() })}
-                    />
-                    <p className="text-xs text-muted-foreground">Placa do reboque/carreta se aplicável</p>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="chassi" className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-primary" />
-                    Chassi
-                  </Label>
-                  <Input
-                    id="chassi"
-                    placeholder="9BWHE21JX24060831"
-                    className="font-mono"
-                    maxLength={30}
-                    value={editedCaminhao.chassi || ""}
-                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, chassi: e.target.value.toUpperCase() })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="registroAntt" className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-primary" />
-                    Registro ANTT
-                  </Label>
-                  <Input
-                    id="registroAntt"
-                    placeholder="ANTT-2020-001"
-                    maxLength={20}
-                    value={editedCaminhao.registro_antt || ""}
-                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, registro_antt: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="proprietarioTipo" className="flex items-center gap-2">
-                    <Info className="h-4 w-4 text-primary" />
-                    Tipo de Proprietário
-                  </Label>
-                  <Select
-                    value={editedCaminhao.proprietario_tipo || "PROPRIO"}
-                    onValueChange={(value: "PROPRIO" | "TERCEIRIZADO") => 
-                      setEditedCaminhao({ ...editedCaminhao, proprietario_tipo: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PROPRIO">Próprio</SelectItem>
-                      <SelectItem value="TERCEIRIZADO">Terceirizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              {/* Validades */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="validadeSeguro" className="flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-orange-600" />
-                    Validade do Seguro
-                  </Label>
-                  <Input
-                    id="validadeSeguro"
-                    placeholder="DD/MM/AAAA"
-                    value={editedCaminhao.validade_seguro || ""}
-                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, validade_seguro: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="validadeLicenciamento" className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-cyan-600" />
-                    Validade do Licenciamento
-                  </Label>
-                  <Input
-                    id="validadeLicenciamento"
-                    placeholder="DD/MM/AAAA"
-                    value={editedCaminhao.validade_licenciamento || ""}
-                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, validade_licenciamento: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator className="my-2" />
-
-            {/* Seção: Status e Motorista */}
+            {/* Seção: Status e Motorista (Operacional) */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-1 w-1 rounded-full bg-primary" />
@@ -1348,7 +1306,7 @@ export default function Frota() {
                       })
                     }
                   >
-                    <SelectTrigger id="motoristaFixoId">
+                    <SelectTrigger id="motoristaFixoId" className={autoFilledFields.motorista ? 'bg-blue-50 dark:bg-blue-900/40' : ''}>
                       <SelectValue placeholder="Selecione um motorista (opcional)" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1370,6 +1328,132 @@ export default function Frota() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">Motorista fixo que opera este veículo regularmente</p>
+                </div>
+              </div>
+            </div>
+
+            <Separator className="my-2" />
+
+            {/* Seção: Documentação e Fiscal */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-1 w-1 rounded-full bg-primary" />
+                <h3 className="font-semibold text-foreground">Documentação e Fiscal</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="renavam" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    RENAVAM do Cavalo
+                  </Label>
+                  <Input
+                    id="renavam"
+                    placeholder="12345678901"
+                    className="font-mono"
+                    maxLength={20}
+                    value={editedCaminhao.renavam || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, renavam: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">RENAVAM do caminhão trator</p>
+                </div>
+                {editedCaminhao.tipo_veiculo && ["CARRETA", "BITREM", "TRUCK"].includes(editedCaminhao.tipo_veiculo) && (
+                  <div className="space-y-2">
+                    <Label htmlFor="placa_carreta_ref" className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-blue-600" />
+                      Placa da Carreta (Referência)
+                    </Label>
+                    <Input
+                      id="placa_carreta_ref"
+                      placeholder="DEF5678"
+                      className="font-mono"
+                      maxLength={20}
+                      value={editedCaminhao.placa_carreta || ""}
+                      onChange={(e) => {
+                        const formatted = formatPlateAsUserTypes(e.target.value);
+                        setEditedCaminhao({ ...editedCaminhao, placa_carreta: formatted });
+                        setFormErrors(prev => { const n = { ...prev }; delete n.placa_carreta; return n; });
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">Placa do reboque/carreta se aplicável</p>
+                    {formErrors.placa_carreta && (
+                      <p className="text-sm text-red-500">{formErrors.placa_carreta}</p>
+                    )}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="chassi" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Chassi
+                  </Label>
+                  <Input
+                    id="chassi"
+                    placeholder="9BWHE21JX24060831"
+                    className="font-mono"
+                    maxLength={30}
+                    value={editedCaminhao.chassi || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, chassi: e.target.value.toUpperCase() })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="registroAntt" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Registro ANTT
+                  </Label>
+                  <Input
+                    id="registroAntt"
+                    placeholder="ANTT-2020-001"
+                    maxLength={20}
+                    value={editedCaminhao.registro_antt || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, registro_antt: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="proprietarioTipo" className="flex items-center gap-2">
+                    <Info className="h-4 w-4 text-primary" />
+                    Tipo de Proprietário
+                  </Label>
+                  <Select
+                    value={editedCaminhao.proprietario_tipo || "PROPRIO"}
+                    onValueChange={(value: "PROPRIO" | "TERCEIRIZADO") => 
+                      setEditedCaminhao({ ...editedCaminhao, proprietario_tipo: value })
+                    }
+                  >
+                    <SelectTrigger className={autoFilledFields.proprietario_tipo ? 'bg-blue-50 dark:bg-blue-900/40' : ''}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PROPRIO">Próprio</SelectItem>
+                      <SelectItem value="TERCEIRIZADO">Terceirizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              {/* Validades */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="validadeSeguro" className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-orange-600" />
+                    Validade do Seguro
+                  </Label>
+                  <Input
+                    id="validadeSeguro"
+                    placeholder="DD/MM/AAAA"
+                    value={editedCaminhao.validade_seguro || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, validade_seguro: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="validadeLicenciamento" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-cyan-600" />
+                    Validade do Licenciamento
+                  </Label>
+                  <Input
+                    id="validadeLicenciamento"
+                    placeholder="DD/MM/AAAA"
+                    value={editedCaminhao.validade_licenciamento || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, validade_licenciamento: e.target.value })}
+                  />
                 </div>
               </div>
             </div>
