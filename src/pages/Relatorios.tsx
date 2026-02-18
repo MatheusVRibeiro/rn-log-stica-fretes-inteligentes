@@ -23,6 +23,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+
 import {
   CalendarIcon,
   Download,
@@ -422,6 +425,65 @@ export default function Relatorios() {
     },
   ];
 
+  const carregarLogoBase64 = async () => {
+    try {
+      const response = await fetch("/principal.png");
+      const blob = await response.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      return base64;
+    } catch {
+      return null;
+    }
+  };
+
+  const exportarRelatorioFretesPdf = async () => {
+    const doc = new jsPDF();
+    const logo = await carregarLogoBase64();
+
+    if (logo) {
+      doc.addImage(logo, "PNG", 14, 10, 24, 24);
+    }
+
+    doc.setFontSize(16);
+    doc.text("Caramello Logística", 42, 18);
+    doc.setFontSize(11);
+    doc.text("Relatório de Fretes Filtrados", 42, 25);
+    doc.text(`Período: ${relatorioMotorista.periodo}`, 14, 42);
+
+    autoTable(doc, {
+      startY: 48,
+      head: [["ID", "Origem", "Destino", "Motorista", "Toneladas", "Receita", "Custos", "Resultado"]],
+      body: filteredFretes.map((frete) => [
+        frete.id,
+        frete.origem,
+        frete.destino,
+        frete.motorista,
+        frete.toneladas.toFixed(2),
+        `R$ ${frete.receita.toLocaleString("pt-BR")}`,
+        `R$ ${frete.custos.toLocaleString("pt-BR")}`,
+        `R$ ${frete.resultado.toLocaleString("pt-BR")}`,
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [25, 118, 210] },
+    });
+
+    const totalToneladas = filteredFretes.reduce((acc, item) => acc + item.toneladas, 0);
+    const totalLiquido = filteredFretes.reduce((acc, item) => acc + item.resultado, 0);
+    const autoTableDoc = doc as jsPDF & { lastAutoTable?: { finalY?: number } };
+    const footerY = autoTableDoc.lastAutoTable?.finalY ? autoTableDoc.lastAutoTable.finalY + 10 : 260;
+
+    doc.setFontSize(11);
+    doc.text(`Total de toneladas: ${totalToneladas.toFixed(2)} t`, 14, footerY);
+    doc.text(`Resultado líquido: R$ ${totalLiquido.toLocaleString("pt-BR")}`, 14, footerY + 7);
+
+    doc.save(`relatorio-fretes-${Date.now()}.pdf`);
+  };
+
   const columns = [
     {
       key: "id",
@@ -498,7 +560,7 @@ export default function Relatorios() {
               <FileSpreadsheet className="h-4 w-4" />
               Excel
             </Button>
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={exportarRelatorioFretesPdf}>
               <FileText className="h-4 w-4" />
               PDF
             </Button>

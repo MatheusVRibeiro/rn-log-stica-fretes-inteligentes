@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FilterBar } from "@/components/shared/FilterBar";
@@ -22,7 +21,6 @@ import {
 } from "@/components/ui/pagination";
 import { InputMascarado } from "@/components/InputMascarado";
 import { validarCPF, validarEmail, validarCNH, validarTelefone, apenasNumeros, formatarDataBrasileira, converterDataBrasileira, formatarDocumento, formatarTelefone } from "@/utils/formatters";
-import * as motoristasService from "@/services/motoristas";
 import {
   Select,
   SelectContent,
@@ -51,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { emptyToNull } from "@/lib/utils";
 import type { Motorista } from "@/types";
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
+import { useCriarMotorista, useMotoristas } from "@/hooks/queries/useMotoristas";
 
 // Payload para criar motorista
 interface CriarMotoristaPayload {
@@ -86,7 +85,6 @@ const tipoMotoristaConfig = {
 };
 
 export default function Motoristas() {
-  const queryClient = useQueryClient();
   const [documentoTipo, setDocumentoTipo] = useState<'cpf' | 'cnpj' | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -105,11 +103,7 @@ export default function Motoristas() {
     data: motoristasResponse,
     isLoading: isLoadingMotoristas,
     refetch: recarregarMotoristas,
-  } = useQuery({
-    queryKey: ["motoristas"],
-    queryFn: motoristasService.listarMotoristas,
-    staleTime: 1000 * 60 * 5,
-  });
+  } = useMotoristas();
 
   const motoristasState: Motorista[] = motoristasResponse?.data || [];
 
@@ -119,24 +113,8 @@ export default function Motoristas() {
     }
   }, [motoristasResponse]);
 
-  const createMotoristaMutation = useMutation({
-    mutationFn: motoristasService.criarMotorista,
-    onSuccess: (res) => {
-      if (res.success) {
-        toast.success("Motorista cadastrado com sucesso!");
-        queryClient.invalidateQueries({ queryKey: ["motoristas"] });
-        queryClient.invalidateQueries({ queryKey: ["caminhoes"] });
-        setIsModalOpen(false);
-        setErrosCampos({});
-        return;
-      }
+  const createMotoristaMutation = useCriarMotorista();
 
-      toast.error(res.message || "Erro ao cadastrar motorista");
-    },
-    onError: () => {
-      toast.error("Erro ao conectar com a API");
-    },
-  });
 
   // Abrir modal de edição quando rota /motoristas/editar/:id for acessada
   const params = useParams();
@@ -285,7 +263,21 @@ export default function Motoristas() {
     // Limpeza final: transforma '' em null para todos os campos
     const finalPayload = emptyToNull(payload);
 
-    createMotoristaMutation.mutate(finalPayload);
+    createMotoristaMutation.mutate(finalPayload, {
+      onSuccess: (res) => {
+        if (res.success) {
+          toast.success("Motorista cadastrado com sucesso!");
+          setIsModalOpen(false);
+          setErrosCampos({});
+          return;
+        }
+
+        toast.error(res.message || "Erro ao cadastrar motorista");
+      },
+      onError: () => {
+        toast.error("Erro ao conectar com a API");
+      },
+    });
   };
 
   const filteredData = motoristasState.filter((motorista) => {

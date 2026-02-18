@@ -1,6 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { clearSessionStorage, SESSION_EXPIRED_MESSAGE, STORAGE_KEYS } from "@/auth/session";
 import * as authService from "@/services/auth";
+import { toast } from "sonner";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? "https://api.caramellologistica.com",
@@ -11,8 +12,20 @@ const api = axios.create({
 
 let refreshPromise: Promise<string | null> | null = null;
 
+const getFriendlyErrorMessage = (error: AxiosError) => {
+  const status = error.response?.status;
+  const responseMessage = (error.response?.data as { message?: string; error?: string } | undefined)?.message
+    || (error.response?.data as { message?: string; error?: string } | undefined)?.error;
+
+  if (status === 422) return responseMessage || "Não foi possível validar os dados enviados. Revise os campos e tente novamente.";
+  if (status === 500) return "O servidor encontrou um problema interno. Tente novamente em instantes.";
+  if (status === 401) return SESSION_EXPIRED_MESSAGE;
+  return responseMessage || "Não foi possível concluir a operação. Tente novamente.";
+};
+
 const redirectToLoginAfterSessionExpiration = () => {
   clearSessionStorage();
+  toast.error(SESSION_EXPIRED_MESSAGE);
   const targetUrl = `/login?session=expired&message=${encodeURIComponent(SESSION_EXPIRED_MESSAGE)}`;
 
   if (window.location.pathname !== "/login") {
@@ -46,6 +59,11 @@ api.interceptors.response.use(
       if (status === 401 && !shouldSkipRefresh(originalRequest)) {
         redirectToLoginAfterSessionExpiration();
       }
+
+      if (status === 422 || status === 500) {
+        toast.error(getFriendlyErrorMessage(error));
+      }
+
       return Promise.reject(error);
     }
 

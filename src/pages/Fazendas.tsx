@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PeriodoFilter } from "@/components/shared/PeriodoFilter";
@@ -48,15 +47,13 @@ import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import fazendasService from "@/services/fazendas";
 import { usePeriodoFilter } from "@/hooks/usePeriodoFilter";
 import { formatarInputMoeda, desformatarMoeda } from "@/utils/formatters";
 import type { Fazenda, CriarFazendaPayload } from "@/types";
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
+import { useAtualizarFazenda, useCriarFazenda, useDeletarFazenda, useFazendas } from "@/hooks/queries/useFazendas";
 
 export default function Fazendas() {
-  const queryClient = useQueryClient();
-
   // Gerar opções de safra dinamicamente (últimos 5 anos e próximos 3)
   const gerarOpcoesSafra = () => {
     const anoAtual = new Date().getFullYear();
@@ -71,11 +68,7 @@ export default function Fazendas() {
   const opcoesSafra = gerarOpcoesSafra();
 
   // Query para listar fazendas
-  const { data: fazendasResponse, isLoading } = useQuery({
-    queryKey: ["fazendas"],
-    queryFn: fazendasService.listarFazendas,
-    staleTime: 1000 * 60 * 5,
-  });
+  const { data: fazendasResponse, isLoading } = useFazendas();
 
   const fazendas: Fazenda[] = fazendasResponse?.data || [];
 
@@ -101,55 +94,14 @@ export default function Fazendas() {
   };
 
   // Mutation para criar fazenda
-  const createMutation = useMutation({
-    mutationFn: fazendasService.criarFazenda,
-    onSuccess: (response) => {
-      if (response.success) {
-        queryClient.invalidateQueries({ queryKey: ["fazendas"] });
-        toast.success("Fazenda cadastrada com sucesso!");
-        setIsModalOpen(false);
-      } else {
-        toast.error(response.message || "Erro ao cadastrar fazenda");
-      }
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Erro ao cadastrar fazenda");
-    },
-  });
+  const createMutation = useCriarFazenda();
 
   // Mutation para atualizar fazenda
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CriarFazendaPayload> }) =>
-      fazendasService.atualizarFazenda(id, data),
-    onSuccess: (response) => {
-      if (response.success) {
-        queryClient.invalidateQueries({ queryKey: ["fazendas"] });
-        toast.success("Fazenda atualizada com sucesso!");
-        setIsModalOpen(false);
-      } else {
-        toast.error(response.message || "Erro ao atualizar fazenda");
-      }
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Erro ao atualizar fazenda");
-    },
-  });
+  const updateMutation = useAtualizarFazenda();
 
   // Mutation para deletar fazenda
-  const deleteMutation = useMutation({
-    mutationFn: fazendasService.deletarFazenda,
-    onSuccess: (response) => {
-      if (response.success) {
-        queryClient.invalidateQueries({ queryKey: ["fazendas"] });
-        toast.success("Fazenda removida com sucesso!");
-      } else {
-        toast.error(response.message || "Erro ao remover fazenda");
-      }
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Erro ao remover fazenda");
-    },
-  });
+  const deleteMutation = useDeletarFazenda();
+
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);

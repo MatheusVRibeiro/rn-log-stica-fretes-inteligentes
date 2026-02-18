@@ -24,6 +24,7 @@ import {
   Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RevenueVsCostBarChart } from "@/components/dashboard/RevenueVsCostBarChart";
 
 const custoKmData = [
   { mes: "Jan", valor: 2.45 },
@@ -70,6 +71,15 @@ const indicadores = [
     icon: Target,
     description: "Frota em operação",
   },
+];
+
+const receitaVsCustosData = [
+  { mes: "Jan", receita: 62000, custos: 39000 },
+  { mes: "Fev", receita: 68000, custos: 41000 },
+  { mes: "Mar", receita: 64000, custos: 40500 },
+  { mes: "Abr", receita: 71000, custos: 43800 },
+  { mes: "Mai", receita: 74500, custos: 45200 },
+  { mes: "Jun", receita: 78600, custos: 47000 },
 ];
 
 const rankingMotoristas = [
@@ -221,6 +231,15 @@ export default function Indicadores() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="animate-fade-in mb-6">
+        <CardHeader>
+          <CardTitle className="text-lg">Comparativo mensal: Receita vs Custos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RevenueVsCostBarChart data={receitaVsCustosData} />
+        </CardContent>
+      </Card>
 
       {/* Drivers Ranking */}
       <Card className="animate-fade-in">

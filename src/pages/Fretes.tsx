@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FilterBar } from "@/components/shared/FilterBar";
@@ -20,7 +20,6 @@ import {
   PaginationEllipsis,
 } from "@/components/ui/pagination";
 import * as fretesService from "@/services/fretes";
-import * as motoristasService from "@/services/motoristas";
 import * as caminhoesService from "@/services/caminhoes";
 import fazendasService from "@/services/fazendas";
 import type { Frete as FreteAPI } from "@/types";
@@ -61,6 +60,8 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useMotoristas } from "@/hooks/queries/useMotoristas";
+import { useFretes } from "@/hooks/queries/useFretes";
 
 interface Frete {
   id: string;
@@ -288,16 +289,7 @@ export default function Fretes() {
 
   // ========== QUERIES ==========
   // Carregar Motoristas
-  const { data: motoristasData, isLoading: isLoadingMotoristas } = useQuery({
-    queryKey: ["motoristas"],
-    queryFn: async () => {
-      const res = await motoristasService.listarMotoristas();
-      if (res.success && Array.isArray(res.data)) {
-        return res.data;
-      }
-      throw new Error(res.message || "Erro ao carregar motoristas");
-    },
-  });
+  const { data: motoristasResponse, isLoading: isLoadingMotoristas } = useMotoristas();
 
   // Carregar Caminhões
   const { data: caminhoesData, isLoading: isLoadingCaminhoes } = useQuery({
@@ -312,41 +304,32 @@ export default function Fretes() {
   });
 
   // Carregar Fretes
-  const { data: fretesAPI, isLoading: isLoadingFretes } = useQuery({
-    queryKey: ["fretes"],
-    queryFn: async () => {
-      const res = await fretesService.listarFretes();
-      if (res.success && res.data) {
-        // Mapear dados da API para o formato interno
-        const fretesFormatados: Frete[] = res.data.map((freteAPI) => ({
-          id: freteAPI.id,
-          origem: freteAPI.origem,
-          destino: freteAPI.destino,
-          motorista: freteAPI.motorista_nome,
-          motoristaId: freteAPI.motorista_id,
-          caminhao: freteAPI.caminhao_placa,
-          caminhaoId: freteAPI.caminhao_id,
-          mercadoria: freteAPI.mercadoria,
-          mercadoriaId: freteAPI.mercadoria_id || freteAPI.mercadoria,
-          fazendaId: freteAPI.fazenda_id || undefined,
-          fazendaNome: freteAPI.fazenda_nome || undefined,
-          variedade: freteAPI.variedade || undefined,
-          dataFrete: freteAPI.data_frete,
-          quantidadeSacas: freteAPI.quantidade_sacas,
-          toneladas: freteAPI.toneladas,
-          valorPorTonelada: freteAPI.valor_por_tonelada,
-          receita: freteAPI.receita,
-          custos: freteAPI.custos,
-          resultado: freteAPI.resultado,
-          ticket: freteAPI.ticket || undefined,
-        }));
-        return fretesFormatados;
-      }
-      throw new Error(res.message || "Erro ao carregar fretes");
-    },
-  });
+  const { data: fretesResponse, isLoading: isLoadingFretes } = useFretes();
 
-  const motoristasState = Array.isArray(motoristasData) ? motoristasData : [];
+  const fretesAPI: Frete[] = (fretesResponse?.data ?? []).map((freteAPI) => ({
+    id: freteAPI.id,
+    origem: freteAPI.origem,
+    destino: freteAPI.destino,
+    motorista: freteAPI.motorista_nome,
+    motoristaId: freteAPI.motorista_id,
+    caminhao: freteAPI.caminhao_placa,
+    caminhaoId: freteAPI.caminhao_id,
+    mercadoria: freteAPI.mercadoria,
+    mercadoriaId: freteAPI.mercadoria_id || freteAPI.mercadoria,
+    fazendaId: freteAPI.fazenda_id || undefined,
+    fazendaNome: freteAPI.fazenda_nome || undefined,
+    variedade: freteAPI.variedade || undefined,
+    dataFrete: freteAPI.data_frete,
+    quantidadeSacas: freteAPI.quantidade_sacas,
+    toneladas: freteAPI.toneladas,
+    valorPorTonelada: freteAPI.valor_por_tonelada,
+    receita: freteAPI.receita,
+    custos: freteAPI.custos,
+    resultado: freteAPI.resultado,
+    ticket: freteAPI.ticket || undefined,
+  }));
+
+  const motoristasState = Array.isArray(motoristasResponse?.data) ? motoristasResponse.data : [];
   const caminhoesState = Array.isArray(caminhoesData) ? caminhoesData : [];
   const fretesState = Array.isArray(fretesAPI) ? fretesAPI : [];
 
