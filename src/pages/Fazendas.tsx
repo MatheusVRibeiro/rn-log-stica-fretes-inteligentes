@@ -1222,6 +1222,7 @@ export default function Fazendas() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Amendoim em Casca">Amendoim em Casca</SelectItem>
+                      <SelectItem value="SEMENTE AM CASCA VERDE">SEMENTE AM CASCA VERDE</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
