@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import * as authService from "@/services/auth";
+import { clearSessionStorage, STORAGE_KEYS } from "@/auth/session";
 import type { ApiResponse, User } from "@/types";
 
 interface AuthContextType {
@@ -22,13 +23,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Check for stored session on mount
-    const storedUser = localStorage.getItem("caramello_logistica_user");
+    const storedUser = localStorage.getItem(STORAGE_KEYS.user);
     
     if (storedUser) {
       try {
         setUser(JSON.parse(storedUser));
       } catch {
-        localStorage.removeItem("caramello_logistica_user");
+        localStorage.removeItem(STORAGE_KEYS.user);
       }
     }
     setIsLoading(false);
@@ -45,8 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { user, token } = res.data;
 
         setUser(user);
-        localStorage.setItem("caramello_logistica_user", JSON.stringify(user));
-        if (token) localStorage.setItem("@CaramelloLogistica:token", token);
+        localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+        if (token) localStorage.setItem(STORAGE_KEYS.accessToken, token);
+        if (res.data.refreshToken) localStorage.setItem(STORAGE_KEYS.refreshToken, res.data.refreshToken);
 
         setIsLoading(false);
         return res;
@@ -65,8 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem("caramello_logistica_user");
-    localStorage.removeItem("@CaramelloLogistica:token");
+    clearSessionStorage();
     navigate("/login");
   };
 

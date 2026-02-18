@@ -74,6 +74,7 @@ export default function Fazendas() {
   const { data: fazendasResponse, isLoading } = useQuery({
     queryKey: ["fazendas"],
     queryFn: fazendasService.listarFazendas,
+    staleTime: 1000 * 60 * 5,
   });
 
   const fazendas: Fazenda[] = fazendasResponse?.data || [];

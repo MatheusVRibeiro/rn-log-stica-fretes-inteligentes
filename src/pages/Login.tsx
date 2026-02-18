@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, AlertCircle, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+import { SESSION_EXPIRED_MESSAGE } from "@/auth/session";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -23,6 +24,19 @@ export default function Login() {
   const location = useLocation();
 
   const from = location.state?.from?.pathname || "/";
+
+  useEffect(() => {
+    const sessionExpiredMessage = location.state?.message;
+    const queryMessage = new URLSearchParams(location.search).get("message");
+    const sessionFlag = new URLSearchParams(location.search).get("session");
+
+    if (sessionExpiredMessage || sessionFlag === "expired") {
+      const finalMessage = sessionExpiredMessage || queryMessage || SESSION_EXPIRED_MESSAGE;
+      setError(finalMessage);
+      toast.error(finalMessage);
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem("@CaramelloLogistica:savedEmail");

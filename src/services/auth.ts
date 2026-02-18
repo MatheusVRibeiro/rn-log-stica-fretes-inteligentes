@@ -17,12 +17,24 @@ interface BackendLoginResponse {
   success: boolean;
   message?: string;
   token: string;
+  refreshToken?: string;
+  refresh_token?: string;
   usuario: BackendUsuario;
+}
+
+interface BackendRefreshResponse {
+  success: boolean;
+  message?: string;
+  token: string;
+  refreshToken?: string;
+  refresh_token?: string;
 }
 
 interface LoginResult {
   user: User;
   token: string;
+  refreshToken?: string;
+  refresh_token?: string;
 }
 
 export async function login(email: string, senha: string): Promise<ApiResponse<LoginResult>> {
@@ -33,7 +45,8 @@ export async function login(email: string, senha: string): Promise<ApiResponse<L
     const status = res.status;
     // Backend retorna: { success, message, token, usuario }
     if (res.data.success && res.data.token && res.data.usuario) {
-      const { token, usuario } = res.data;
+      const { token, refreshToken, refresh_token, usuario } = res.data;
+      const normalizedRefreshToken = refreshToken ?? refresh_token;
 
       if (!usuario) {
         return { success: false, data: null, message: "Usuário não encontrado na resposta", status };
@@ -51,7 +64,8 @@ export async function login(email: string, senha: string): Promise<ApiResponse<L
         success: true,
         data: {
           user: mappedUser,
-          token: token,
+          token,
+          refreshToken: normalizedRefreshToken,
         },
         status,
       };
@@ -64,6 +78,38 @@ export async function login(email: string, senha: string): Promise<ApiResponse<L
     const status = anyErr?.response?.status;
     const message = anyErr?.response?.data?.message ?? anyErr?.message ?? "Erro na autenticação";
     return { success: false, data: null, message, status };
+  }
+}
+
+export async function refreshToken(refreshTokenValue: string): Promise<ApiResponse<{ token: string; refreshToken?: string }>> {
+  try {
+    const res = await api.post<BackendRefreshResponse>("/auth/refresh", { refreshToken: refreshTokenValue });
+
+    if (res.data.success && res.data.token) {
+      return {
+        success: true,
+        data: {
+          token: res.data.token,
+          refreshToken: res.data.refreshToken ?? res.data.refresh_token,
+        },
+        status: res.status,
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      message: res.data.message ?? "Não foi possível renovar a sessão",
+      status: res.status,
+    };
+  } catch (err: unknown) {
+    const anyErr: any = err;
+    return {
+      success: false,
+      data: null,
+      message: anyErr?.response?.data?.message ?? anyErr?.message ?? "Erro ao renovar sessão",
+      status: anyErr?.response?.status,
+    };
   }
 }
 

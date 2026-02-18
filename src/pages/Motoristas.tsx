@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FilterBar } from "@/components/shared/FilterBar";
@@ -48,7 +48,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, TrendingUp, Phone, Mail, Calendar, Truck, Edit, Save, X, MapPin, Award, CreditCard, Users, UserCheck, UserX, ShieldCheck, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { cleanPayload, emptyToNull } from "@/lib/utils";
+import { emptyToNull } from "@/lib/utils";
 import type { Motorista } from "@/types";
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
 
@@ -95,58 +95,65 @@ export default function Motoristas() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedMotorista, setEditedMotorista] = useState<Partial<Motorista>>({});
-  const [motoristasState, setMotoristasState] = useState<Motorista[]>([]);
-  const [isLoadingMotoristas, setIsLoadingMotoristas] = useState(true);
+
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = ITEMS_PER_PAGE;
   const [errosCampos, setErrosCampos] = useState<Record<string, string>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Carregar motoristas da API
+  const {
+    data: motoristasResponse,
+    isLoading: isLoadingMotoristas,
+    refetch: recarregarMotoristas,
+  } = useQuery({
+    queryKey: ["motoristas"],
+    queryFn: motoristasService.listarMotoristas,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const motoristasState: Motorista[] = motoristasResponse?.data || [];
+
   useEffect(() => {
-    carregarMotoristas();
-  }, []);
+    if (motoristasResponse && !motoristasResponse.success) {
+      toast.error(motoristasResponse.message || "Erro ao carregar motoristas");
+    }
+  }, [motoristasResponse]);
+
+  const createMotoristaMutation = useMutation({
+    mutationFn: motoristasService.criarMotorista,
+    onSuccess: (res) => {
+      if (res.success) {
+        toast.success("Motorista cadastrado com sucesso!");
+        queryClient.invalidateQueries({ queryKey: ["motoristas"] });
+        queryClient.invalidateQueries({ queryKey: ["caminhoes"] });
+        setIsModalOpen(false);
+        setErrosCampos({});
+        return;
+      }
+
+      toast.error(res.message || "Erro ao cadastrar motorista");
+    },
+    onError: () => {
+      toast.error("Erro ao conectar com a API");
+    },
+  });
 
   // Abrir modal de edição quando rota /motoristas/editar/:id for acessada
   const params = useParams();
   useEffect(() => {
     const idParam = params.id;
-    if (!idParam) return;
-    // Se já carregou os motoristas, tenta abrir o modal
-    if (!isLoadingMotoristas && motoristasState.length > 0) {
-      const found = motoristasState.find((m) => String(m.id) === String(idParam));
-      if (found) {
-        handleOpenEditModal(found);
-      } else {
-        // Caso não encontre, tenta recarregar (pode ser um id novo)
-        carregarMotoristas();
-      }
+    if (!idParam || isLoadingMotoristas || motoristasState.length === 0) return;
+
+    const found = motoristasState.find((m) => String(m.id) === String(idParam));
+    if (found) {
+      handleOpenEditModal(found);
+      return;
     }
-  }, [params.id, isLoadingMotoristas, motoristasState]);
+
+    recarregarMotoristas();
+  }, [params.id, isLoadingMotoristas, motoristasState, recarregarMotoristas]);
 
   const navigate = useNavigate();
-
-
-
-  const carregarMotoristas = async () => {
-    setIsLoadingMotoristas(true);
-    try {
-      const res = await motoristasService.listarMotoristas();
-      
-      if (res.success && Array.isArray(res.data)) {
-        setMotoristasState(res.data);
-        toast.success(`${res.data.length} motoristas carregados`);
-      } else {
-        setMotoristasState([]);
-        toast.error(res.message || "Erro ao carregar motoristas");
-      }
-    } catch (error) {
-      console.error("Erro ao carregar motoristas:", error);
-      setMotoristasState([]);
-      toast.error("Erro ao conectar com a API. Verifique se o backend está rodando.");
-    }
-    setIsLoadingMotoristas(false);
-  };
 
   const handleOpenNewModal = () => {
     setEditedMotorista({
@@ -278,26 +285,7 @@ export default function Motoristas() {
     // Limpeza final: transforma '' em null para todos os campos
     const finalPayload = emptyToNull(payload);
 
-    try {
-
-      const res = await motoristasService.criarMotorista(finalPayload);
-
-      if (res.success && res.data) {
-
-
-        toast.success("Motorista cadastrado com sucesso!");
-        await carregarMotoristas();
-        queryClient.invalidateQueries({ queryKey: ["motoristas"] });
-        queryClient.invalidateQueries({ queryKey: ["caminhoes"] });
-        setIsModalOpen(false);
-        setErrosCampos({});
-      } else {
-        toast.error(res.message || "Erro ao cadastrar motorista");
-      }
-    } catch (error) {
-      console.error("Erro ao cadastrar motorista:", error);
-      toast.error("Erro ao conectar com a API");
-    }
+    createMotoristaMutation.mutate(finalPayload);
   };
 
   const filteredData = motoristasState.filter((motorista) => {
