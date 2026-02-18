@@ -1,4 +1,5 @@
 import api from "@/api/axios";
+import { isAxiosError } from "axios";
 import type { ApiResponse, User } from "@/types";
 
 interface LoginPayload {
@@ -73,10 +74,16 @@ export async function login(email: string, senha: string): Promise<ApiResponse<L
 
     return { success: false, data: null, message: res.data.message ?? "Resposta inválida do servidor", status };
   } catch (err: unknown) {
-    // Try to extract status/message from axios error shape
-    const anyErr: any = err;
-    const status = anyErr?.response?.status;
-    const message = anyErr?.response?.data?.message ?? anyErr?.message ?? "Erro na autenticação";
+    let message = "Erro na autenticação";
+    let status: number | undefined = undefined;
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      status = err.response?.status;
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message, status };
   }
 }
@@ -103,12 +110,21 @@ export async function refreshToken(refreshTokenValue: string): Promise<ApiRespon
       status: res.status,
     };
   } catch (err: unknown) {
-    const anyErr: any = err;
+    let message = "Erro ao renovar sessão";
+    let status: number | undefined = undefined;
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      status = err.response?.status;
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return {
       success: false,
       data: null,
-      message: anyErr?.response?.data?.message ?? anyErr?.message ?? "Erro ao renovar sessão",
-      status: anyErr?.response?.status,
+      message,
+      status,
     };
   }
 }
@@ -129,9 +145,16 @@ export async function register(nome: string, email: string, senha: string): Prom
 
     return { success: false, data: null, message: res.data.message ?? "Resposta inválida do servidor", status };
   } catch (err: unknown) {
-    const anyErr: any = err;
-    const status = anyErr?.response?.status;
-    const message = anyErr?.response?.data?.message ?? anyErr?.message ?? "Erro no registro";
+    let message = "Erro no registro";
+    let status: number | undefined = undefined;
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      status = err.response?.status;
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message, status };
   }
 }

@@ -1,4 +1,5 @@
 import api from "@/api/axios";
+import { isAxiosError } from "axios";
 import type { ApiResponse, Frete, CriarFretePayload } from "@/types";
 
 interface BackendFretesResponse {
@@ -18,12 +19,21 @@ export async function listarFretes(): Promise<ApiResponse<Frete[]>> {
     const res = await api.get<BackendFretesResponse>("/fretes");
     
     if (res.data.success && res.data.data) {
-      return { success: true, data: res.data.data };
+      return { success: true, data: res.data.data, status: res.status };
     }
-    
+
     return { success: false, data: null, message: "Resposta inválida do servidor" };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao listar fretes";
+    let message = "Erro ao listar fretes";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 }
@@ -37,12 +47,22 @@ export async function criarFrete(payload: CriarFretePayload): Promise<ApiRespons
         success: true,
         data: res.data.data,
         message: res.data.message,
+        status: res.status,
       };
     }
-    
+
     return { success: false, data: null, message: "Resposta inválida do servidor" };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err?.response?.data?.error ?? err.message ?? "Erro ao criar frete";
+    let message = "Erro ao criar frete";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.response?.data?.error ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 }
@@ -57,7 +77,16 @@ export async function obterFrete(id: string): Promise<ApiResponse<Frete>> {
     
     return { success: false, data: null, message: "Frete não encontrado" };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao obter frete";
+    let message = "Erro ao obter frete";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 }
@@ -72,8 +101,17 @@ export async function listarFretesPendentes(motoristaId?: string): Promise<ApiRe
     }
 
     return { success: false, data: null, message: "Resposta inválida do servidor" };
-  } catch (err: any) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao listar fretes pendentes";
+  } catch (err: unknown) {
+    let message = "Erro ao listar fretes pendentes";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 }

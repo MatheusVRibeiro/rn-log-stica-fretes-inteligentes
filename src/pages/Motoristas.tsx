@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FilterBar } from "@/components/shared/FilterBar";
@@ -46,10 +46,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, TrendingUp, Phone, Mail, Calendar, Truck, Edit, Save, X, MapPin, Award, CreditCard, Users, UserCheck, UserX, ShieldCheck, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { emptyToNull } from "@/lib/utils";
+import { emptyToNull, cleanPayload } from "@/lib/utils";
 import type { Motorista } from "@/types";
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
-import { useCriarMotorista, useMotoristas } from "@/hooks/queries/useMotoristas";
+import { useCriarMotorista, useMotoristas, useAtualizarMotorista } from "@/hooks/queries/useMotoristas";
 
 // Payload para criar motorista
 interface CriarMotoristaPayload {
@@ -90,6 +90,7 @@ export default function Motoristas() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [tipoFilter, setTipoFilter] = useState<string>("all");
   const [selectedMotorista, setSelectedMotorista] = useState<Motorista | null>(null);
+  const [originalMotorista, setOriginalMotorista] = useState<Motorista | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedMotorista, setEditedMotorista] = useState<Partial<Motorista>>({});
@@ -114,6 +115,7 @@ export default function Motoristas() {
   }, [motoristasResponse]);
 
   const createMotoristaMutation = useCriarMotorista();
+  const atualizarMotoristaMutation = useAtualizarMotorista();
 
 
   // Abrir modal de edição quando rota /motoristas/editar/:id for acessada
@@ -132,6 +134,7 @@ export default function Motoristas() {
   }, [params.id, isLoadingMotoristas, motoristasState, recarregarMotoristas]);
 
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleOpenNewModal = () => {
     setEditedMotorista({
@@ -152,14 +155,17 @@ export default function Motoristas() {
     });
     setIsEditing(false);
     setIsModalOpen(true);
+    setOriginalMotorista(null);
   };
 
   const handleOpenEditModal = (motorista: Motorista) => {
     setEditedMotorista({
       ...motorista
     });
+    setOriginalMotorista({ ...motorista });
     setIsEditing(true);
     setIsModalOpen(true);
+    if (motorista) navigate(`/motoristas/editar/${motorista.id}`);
   };
 
   const clearFilters = () => {
@@ -213,16 +219,7 @@ export default function Motoristas() {
       return;
     }
 
-    if (isEditing) {
-      toast.success("Motorista atualizado com sucesso!");
-      setIsModalOpen(false);
-      setErrosCampos({});
-      return;
-    }
-
-
-
-    // Build minimal payload for creation
+    // Build minimal payload (used for create and update)
     const payload: Record<string, any> = {
       nome: editedMotorista.nome?.trim() || "",
       telefone: apenasNumeros(editedMotorista.telefone || ""),
@@ -230,25 +227,21 @@ export default function Motoristas() {
       status: editedMotorista.status || "ativo",
       tipo_pagamento: editedMotorista.tipo_pagamento || 'pix',
     };
-    // Adiciona documento (CPF/CNPJ) se preenchido
+
     if (editedMotorista.documento && editedMotorista.documento.trim() !== "") {
       const docLimpo = apenasNumeros(editedMotorista.documento);
       payload.documento = docLimpo;
-      // Detecta tipo: se tiver mais de 11 dígitos -> CNPJ, caso contrário CPF
       const tipoDetectado = documentoTipo || (docLimpo.length > 11 ? 'cnpj' : 'cpf');
       payload.documento_tipo = tipoDetectado;
     }
 
-
-
-    // Payment normalization
     if (payload.tipo_pagamento === 'pix') {
       payload.banco = null;
       payload.agencia = null;
       payload.conta = null;
       payload.tipo_conta = null;
-      payload.chave_pix_tipo = editedMotorista.chave_pix_tipo || 'cpf';
-      payload.chave_pix = editedMotorista.chave_pix ? (editedMotorista.chave_pix_tipo === 'cpf' ? apenasNumeros(editedMotorista.chave_pix) : editedMotorista.chave_pix) : null;
+      payload.chave_pix_tipo = (editedMotorista.chave_pix_tipo as string) || 'cpf';
+      payload.chave_pix = editedMotorista.chave_pix ? (payload.chave_pix_tipo === 'cpf' ? apenasNumeros(editedMotorista.chave_pix) : editedMotorista.chave_pix) : null;
     } else if (payload.tipo_pagamento === 'transferencia_bancaria') {
       payload.banco = editedMotorista.banco || null;
       payload.agencia = editedMotorista.agencia || null;
@@ -257,28 +250,107 @@ export default function Motoristas() {
       payload.chave_pix_tipo = null;
     }
 
-    // Clean payload and convert empty strings to null for specific keys
+    // Remove null/undefined/empty fields to avoid sending explicit nulls for enum fields
+    const finalPayload = cleanPayload(payload);
 
+    if (isEditing) {
+      // Build normalized objects for comparison (to detect only changed fields)
+      const normalize = (m: any) => {
+        if (!m) return {};
+        const telefone = m.telefone ? apenasNumeros(m.telefone) : null;
+        const documento = m.documento ? apenasNumeros(m.documento) : null;
+        const tipo_pagamento = m.tipo_pagamento || null;
+        const chave_pix_tipo = m.chave_pix_tipo || (tipo_pagamento === 'pix' ? 'cpf' : null);
+        const chave_pix = m.chave_pix
+          ? (chave_pix_tipo === 'cpf' ? apenasNumeros(m.chave_pix) : m.chave_pix)
+          : null;
+        return {
+          nome: m.nome ?? null,
+          telefone,
+          documento,
+          documento_tipo: m.documento ? (documento && documento.length > 11 ? 'cnpj' : 'cpf') : null,
+          tipo: m.tipo ?? null,
+          status: m.status ?? null,
+          tipo_pagamento,
+          chave_pix_tipo,
+          chave_pix,
+          banco: m.banco ?? null,
+          agencia: m.agencia ?? null,
+          conta: m.conta ?? null,
+          tipo_conta: m.tipo_conta ?? null,
+        };
+      };
 
-    // Limpeza final: transforma '' em null para todos os campos
-    const finalPayload = emptyToNull(payload);
+      const originalNorm = normalize(originalMotorista);
+      const editedNorm = normalize(editedMotorista);
 
-    createMotoristaMutation.mutate(finalPayload, {
-      onSuccess: (res) => {
-        if (res.success) {
-          toast.success("Motorista cadastrado com sucesso!");
-          setIsModalOpen(false);
-          setErrosCampos({});
-          return;
+        const changed: Record<string, any> = {};
+      Object.keys(editedNorm).forEach((k) => {
+        const origVal = originalNorm[k as keyof typeof originalNorm];
+        const editVal = editedNorm[k as keyof typeof editedNorm];
+        if (origVal !== editVal) {
+          changed[k] = editVal;
         }
+      });
 
-        toast.error(res.message || "Erro ao cadastrar motorista");
-      },
-      onError: () => {
-        toast.error("Erro ao conectar com a API");
-      },
-    });
+      // Map any 'none' sentinel to null already handled in normalized values
+      const finalUpdatePayload = cleanPayload(changed);
+
+      if (Object.keys(finalUpdatePayload).length === 0) {
+        toast.info('Nenhuma alteração detectada.');
+        return;
+      }
+
+      const id = String(editedMotorista.id || editedMotorista.codigo_motorista || "");
+      // Fechar modal e usar mutateAsync; reabrir em caso de erro
+      setIsModalOpen(false);
+      try {
+        console.debug("atualizarMotorista - payload:", finalUpdatePayload);
+        const res = await atualizarMotoristaMutation.mutateAsync({ id, payload: finalUpdatePayload });
+        console.debug("atualizarMotorista - resposta:", res);
+        if (res?.success) {
+          toast.success(res.message ?? "Motorista atualizado com sucesso!");
+          setErrosCampos({});
+          setIsEditing(false);
+          setEditedMotorista({});
+          setOriginalMotorista(null);
+          recarregarMotoristas();
+          navigate("/motoristas", { replace: true });
+        } else {
+          toast.error(res?.message ?? "Erro ao atualizar motorista");
+          setIsModalOpen(true);
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error("Erro ao atualizar motorista");
+        setIsModalOpen(true);
+      }
+      return;
+    }
+
+    // Fechar modal e usar mutateAsync; reabrir em caso de erro
+    setIsModalOpen(false);
+    try {
+      const res = await createMotoristaMutation.mutateAsync(finalPayload as any);
+      if (res?.success) {
+        toast.success("Motorista cadastrado com sucesso!");
+        setErrosCampos({});
+      } else {
+        toast.error(res?.message || "Erro ao cadastrar motorista");
+        setIsModalOpen(true);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao conectar com a API");
+      setIsModalOpen(true);
+    }
   };
+
+  useEffect(() => {
+    if (!isModalOpen && location.pathname.startsWith("/motoristas/editar")) {
+      navigate("/motoristas");
+    }
+  }, [isModalOpen, location.pathname, navigate]);
 
   const filteredData = motoristasState.filter((motorista) => {
     const matchesSearch =
@@ -291,10 +363,15 @@ export default function Motoristas() {
     return matchesSearch && matchesStatus && matchesTipo;
   });
 
+  // Ordenar alfabeticamente por nome (case-insensitive) antes da paginação
+  const sortedData = [...filteredData].sort((a, b) =>
+    a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+  );
+
   // Lógica de paginação
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedData = sortedData.slice(startIndex, startIndex + itemsPerPage);
 
   // Resetar para página 1 quando aplicar novos filtros
   useEffect(() => {
@@ -313,6 +390,8 @@ export default function Motoristas() {
   };
 
   const receitaTotal = motoristasState.reduce((acc, m) => acc + toNumber(m.receita_gerada), 0);
+
+  
 
   const columns = [
     {
@@ -339,8 +418,7 @@ export default function Motoristas() {
                 )}
               />
               <p className="font-semibold text-foreground leading-tight">{item.nome}</p>
-              {/* Exibe o código do motorista */}
-              <span className="ml-2 font-mono text-xs text-primary">{item.codigo_motorista}</span>
+              {/* código_motorista oculto por solicitação do usuário */}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{formatarDocumento(item.documento)}</p>
             <div className="mt-1 flex items-center gap-2">
@@ -605,6 +683,8 @@ export default function Motoristas() {
         <Plus className="h-6 w-6" />
       </Button>
 
+      
+
       <DataTable<Motorista>
         columns={columns}
         data={paginatedData}
@@ -759,8 +839,7 @@ export default function Motoristas() {
                     </Avatar>
                     <div>
                       <p className="text-2xl font-bold mb-1">{selectedMotorista.nome}</p>
-                      {/* Exibe o código do motorista */}
-                      <p className="font-mono text-primary mb-2">{selectedMotorista.codigo_motorista}</p>
+                      {/* código_motorista oculto por solicitação do usuário */}
                       <p className="text-muted-foreground mb-2">{formatarDocumento(selectedMotorista.documento)}</p>
                       <div className="flex items-center gap-2">
                         <Badge
@@ -1037,6 +1116,7 @@ export default function Motoristas() {
                 </Select>
                 {errosCampos.tipo && <p className="text-sm text-red-500 dark:text-red-400">{errosCampos.tipo}</p>}
               </div>
+              
             </div>
 
             {/* Linha 4: Endereço e Status */}

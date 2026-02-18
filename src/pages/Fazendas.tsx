@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PeriodoFilter } from "@/components/shared/PeriodoFilter";
@@ -52,6 +52,7 @@ import { formatarInputMoeda, desformatarMoeda } from "@/utils/formatters";
 import type { Fazenda, CriarFazendaPayload } from "@/types";
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
 import { useAtualizarFazenda, useCriarFazenda, useDeletarFazenda, useFazendas } from "@/hooks/queries/useFazendas";
+import { diffObjects } from "@/lib/diff";
 
 export default function Fazendas() {
   // Gerar opções de safra dinamicamente (últimos 5 anos e próximos 3)
@@ -106,6 +107,7 @@ export default function Fazendas() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedProducao, setSelectedProducao] = useState<Fazenda | null>(null);
+  const [originalProducao, setOriginalProducao] = useState<Fazenda | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [newProducao, setNewProducao] = useState<Partial<Fazenda>>({
     fazenda: "",
@@ -145,14 +147,28 @@ export default function Fazendas() {
     setSearch("");
   };
 
+  const navigate = useNavigate();
+
   const handleOpenEditModal = (producao: Fazenda) => {
     setNewProducao(producao);
     setIsEditing(true);
     setSelectedProducao(null);
     setIsModalOpen(true);
+    navigate(`/fazendas/editar/${producao.id}`, { replace: false });
+    setOriginalProducao(producao);
   };
 
-  const handleSave = () => {
+  // Keep the URL in sync: when modal is closed, remove the /editar/:id segment
+  useEffect(() => {
+    if (!isModalOpen) {
+      const path = window.location.pathname || "";
+      if (path.startsWith("/fazendas/editar/")) {
+        navigate("/fazendas", { replace: true });
+      }
+    }
+  }, [isModalOpen, navigate]);
+
+  const handleSave = async () => {
     if (!newProducao.fazenda || !newProducao.mercadoria || !newProducao.variedade) {
       toast.error("Preencha todos os campos obrigatórios!");
       return;
@@ -175,7 +191,31 @@ export default function Fazendas() {
         colheita_finalizada: newProducao.colheita_finalizada,
       };
 
-      updateMutation.mutate({ id: newProducao.id, data: payloadForUpdate });
+      // Compute diff against original; if no changes, skip API
+      const delta = diffObjects(originalProducao as any, payloadForUpdate as any);
+      if (!delta || Object.keys(delta).length === 0) {
+        toast.info("Nenhuma alteração detectada.");
+        setIsModalOpen(false);
+        navigate("/fazendas", { replace: true });
+        return;
+      }
+
+      setIsModalOpen(false);
+      try {
+        const res = await updateMutation.mutateAsync({ id: newProducao.id, data: delta as any });
+        if (res?.success) {
+          toast.success("Fazenda atualizada com sucesso");
+          setIsModalOpen(false);
+          navigate("/fazendas", { replace: true });
+        } else {
+          toast.error(res?.message || "Erro ao atualizar fazenda");
+          setIsModalOpen(true);
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error("Erro ao atualizar fazenda");
+        setIsModalOpen(true);
+      }
     } else {
       const payload: CriarFazendaPayload = {
         fazenda: newProducao.fazenda!,
@@ -193,7 +233,22 @@ export default function Fazendas() {
         colheita_finalizada: false,
       };
 
-      createMutation.mutate(payload);
+      setIsModalOpen(false);
+      try {
+        const res = await createMutation.mutateAsync(payload as any);
+        if (res?.success) {
+          toast.success("Fazenda criada com sucesso");
+          setIsModalOpen(false);
+          navigate("/fazendas", { replace: true });
+        } else {
+          toast.error(res?.message || "Erro ao criar fazenda");
+          setIsModalOpen(true);
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error("Erro ao criar fazenda");
+        setIsModalOpen(true);
+      }
     }
   };
 

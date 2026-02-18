@@ -1,12 +1,22 @@
 import api from "@/api/axios";
+import { isAxiosError } from "axios";
 import type { Custo, CriarCustoPayload, ApiResponse } from "@/types";
 
 const listarCustos = async (): Promise<ApiResponse<Custo[]>> => {
   try {
     const res = await api.get("/custos");
-    return { success: true, data: res.data.data || res.data };
+    return { success: true, data: res.data.data || res.data, status: res.status };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao listar custos";
+    let message = "Erro ao listar custos";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 };
@@ -14,9 +24,18 @@ const listarCustos = async (): Promise<ApiResponse<Custo[]>> => {
 const obterCusto = async (id: string): Promise<ApiResponse<Custo>> => {
   try {
     const res = await api.get(`/custos/${id}`);
-    return { success: true, data: res.data.data || res.data };
+    return { success: true, data: res.data.data || res.data, status: res.status };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao obter custo";
+    let message = "Erro ao obter custo";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 };
@@ -24,9 +43,18 @@ const obterCusto = async (id: string): Promise<ApiResponse<Custo>> => {
 const criarCusto = async (payload: CriarCustoPayload): Promise<ApiResponse<Custo>> => {
   try {
     const res = await api.post("/custos", payload);
-    return { success: true, data: res.data.data || res.data };
+    return { success: true, data: res.data.data || res.data, status: res.status };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao criar custo";
+    let message = "Erro ao criar custo";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 };
@@ -37,19 +65,37 @@ const atualizarCusto = async (
 ): Promise<ApiResponse<Custo>> => {
   try {
     const res = await api.put(`/custos/${id}`, payload);
-    return { success: true, data: res.data.data || res.data };
+    return { success: true, data: res.data.data || res.data, status: res.status };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao atualizar custo";
+    let message = "Erro ao atualizar custo";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 };
 
 const deletarCusto = async (id: string): Promise<ApiResponse<void>> => {
   try {
-    await api.delete(`/custos/${id}`);
-    return { success: true, data: null };
+    const res = await api.delete(`/custos/${id}`);
+    return { success: true, data: null, status: res.status };
   } catch (err: unknown) {
-    const message = err?.response?.data?.message ?? err.message ?? "Erro ao deletar custo";
+    let message = "Erro ao deletar custo";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
     return { success: false, data: null, message };
   }
 };

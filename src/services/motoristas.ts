@@ -20,7 +20,7 @@ export async function criarMotorista(payload: Record<string, any>): Promise<ApiR
     console.debug("POST /motoristas payload:", payload);
     const res = await api.post("/motoristas", payload);
     // Backend retorna {success, message, data: {...}}
-    return { success: true, data: res.data.data || res.data };
+    return { success: true, data: res.data.data || res.data, status: res.status };
   } catch (err: any) {
     // Log detalhado e tentativa de extrair mensagem útil do backend
     console.error("Erro em criarMotorista:", err);
@@ -39,13 +39,38 @@ export async function criarMotorista(payload: Record<string, any>): Promise<ApiR
     } else if (err instanceof Error) {
       message = err.message;
     }
-    return { success: false, data: null, message, status: err?.response?.status };
+    const status = isAxiosError(err) ? err.response?.status : undefined;
+    return { success: false, data: null, message, status };
+  }
+}
+
+export async function atualizarMotorista(id: string, payload: Partial<Record<string, any>>): Promise<ApiResponse<Motorista>> {
+  try {
+    console.debug(`PUT /motoristas/${id} payload:`, payload);
+    const res = await api.put(`/motoristas/${id}`, payload);
+    console.debug(`Resposta PUT /motoristas/${id}:`, res.data);
+    return { success: true, data: res.data.data || res.data, status: res.status };
+  } catch (err: unknown) {
+    let message = "Erro ao atualizar motorista";
+    if (isAxiosError(err)) {
+      const respData = err.response?.data;
+      console.error("Resposta de erro do servidor em atualizarMotorista:", respData);
+      message = respData?.message ?? respData?.error ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
+    return { success: false, data: null, message };
   }
 }
 
 const motoristasService = {
   listarMotoristas,
   criarMotorista,
+  atualizarMotorista,
 };
 
 export default motoristasService;

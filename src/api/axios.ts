@@ -4,7 +4,10 @@ import * as authService from "@/services/auth";
 import { toast } from "sonner";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? "https://api.caramellologistica.com",
+  // baseURL: import.meta.env.VITE_API_URL ?? "https://api.caramellologistica.com",
+  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:3000/",
+
+  
   headers: {
     "Content-Type": "application/json",
   },
