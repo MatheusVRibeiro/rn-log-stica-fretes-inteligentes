@@ -20,6 +20,7 @@ const getFriendlyErrorMessage = (error: AxiosError) => {
   const responseMessage = (error.response?.data as { message?: string; error?: string } | undefined)?.message
     || (error.response?.data as { message?: string; error?: string } | undefined)?.error;
 
+  if (status === 400) return responseMessage || "Dados inválidos. Revise os campos e tente novamente.";
   if (status === 422) return responseMessage || "Não foi possível validar os dados enviados. Revise os campos e tente novamente.";
   if (status === 500) return "O servidor encontrou um problema interno. Tente novamente em instantes.";
   if (status === 401) return SESSION_EXPIRED_MESSAGE;
@@ -38,7 +39,7 @@ const redirectToLoginAfterSessionExpiration = () => {
 
 const shouldSkipRefresh = (config?: InternalAxiosRequestConfig) => {
   const url = config?.url ?? "";
-  return url.includes("/auth/login") || url.includes("/auth/refresh");
+  return url.includes("/login") || url.includes("/auth/login") || url.includes("/auth/refresh");
 };
 
 api.interceptors.request.use(
@@ -63,7 +64,7 @@ api.interceptors.response.use(
         redirectToLoginAfterSessionExpiration();
       }
 
-      if (status === 422 || status === 500) {
+      if (status === 400 || status === 422 || status === 500) {
         toast.error(getFriendlyErrorMessage(error));
       }
 

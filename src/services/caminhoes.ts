@@ -74,11 +74,31 @@ export async function deletarCaminhao(id: string): Promise<ApiResponse<void>> {
   }
 }
 
+export async function listarPorMotorista(motoristaId: string): Promise<ApiResponse<Caminhao[]>> {
+  try {
+    const res = await api.get(`/frota?motorista_fixo_id=${motoristaId}`);
+    return { success: true, data: res.data.data || res.data, status: res.status };
+  } catch (err: unknown) {
+    let message = "Erro ao listar caminhões do motorista";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
+    return { success: false, data: null, message };
+  }
+}
+
 const caminhoesService = {
   listarCaminhoes,
   criarCaminhao,
   atualizarCaminhao,
   deletarCaminhao,
+  listarPorMotorista,
 };
 
 export default caminhoesService;

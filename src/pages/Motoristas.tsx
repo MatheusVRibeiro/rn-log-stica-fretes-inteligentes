@@ -46,10 +46,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, TrendingUp, Phone, Mail, Calendar, Truck, Edit, Save, X, MapPin, Award, CreditCard, Users, UserCheck, UserX, ShieldCheck, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { sortMotoristasPorNome } from "@/lib/sortHelpers";
 import { emptyToNull, cleanPayload } from "@/lib/utils";
 import type { Motorista } from "@/types";
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
 import { useCriarMotorista, useMotoristas, useAtualizarMotorista } from "@/hooks/queries/useMotoristas";
+import { ModalSubmitFooter } from "@/components/shared/ModalSubmitFooter";
 
 // Payload para criar motorista
 interface CriarMotoristaPayload {
@@ -62,7 +64,7 @@ interface CriarMotoristaPayload {
   endereco?: string | null;
   status?: "ativo" | "inativo" | "ferias";
   tipo_pagamento?: "pix" | "transferencia_bancaria";
-  chave_pix_tipo?: "cpf" | "email" | "telefone" | "aleatoria" | null;
+  chave_pix_tipo?: "cpf" | "cnpj" | "email" | "telefone" | "aleatoria" | null;
   chave_pix?: string | null;
   banco?: string | null;
   agencia?: string | null;
@@ -106,7 +108,7 @@ export default function Motoristas() {
     refetch: recarregarMotoristas,
   } = useMotoristas();
 
-  const motoristasState: Motorista[] = motoristasResponse?.data || [];
+  const motoristasState: Motorista[] = sortMotoristasPorNome(motoristasResponse?.data || []);
 
   useEffect(() => {
     if (motoristasResponse && !motoristasResponse.success) {
@@ -116,6 +118,7 @@ export default function Motoristas() {
 
   const createMotoristaMutation = useCriarMotorista();
   const atualizarMotoristaMutation = useAtualizarMotorista();
+  const isSaving = createMotoristaMutation.status === "pending" || atualizarMotoristaMutation.status === "pending";
 
 
   // Abrir modal de edição quando rota /motoristas/editar/:id for acessada
@@ -241,7 +244,11 @@ export default function Motoristas() {
       payload.conta = null;
       payload.tipo_conta = null;
       payload.chave_pix_tipo = (editedMotorista.chave_pix_tipo as string) || 'cpf';
-      payload.chave_pix = editedMotorista.chave_pix ? (payload.chave_pix_tipo === 'cpf' ? apenasNumeros(editedMotorista.chave_pix) : editedMotorista.chave_pix) : null;
+      payload.chave_pix = editedMotorista.chave_pix
+        ? (payload.chave_pix_tipo === 'cpf' || payload.chave_pix_tipo === 'cnpj'
+            ? apenasNumeros(editedMotorista.chave_pix)
+            : editedMotorista.chave_pix)
+        : null;
     } else if (payload.tipo_pagamento === 'transferencia_bancaria') {
       payload.banco = editedMotorista.banco || null;
       payload.agencia = editedMotorista.agencia || null;
@@ -262,7 +269,7 @@ export default function Motoristas() {
         const tipo_pagamento = m.tipo_pagamento || null;
         const chave_pix_tipo = m.chave_pix_tipo || (tipo_pagamento === 'pix' ? 'cpf' : null);
         const chave_pix = m.chave_pix
-          ? (chave_pix_tipo === 'cpf' ? apenasNumeros(m.chave_pix) : m.chave_pix)
+          ? (chave_pix_tipo === 'cpf' || chave_pix_tipo === 'cnpj' ? apenasNumeros(m.chave_pix) : m.chave_pix)
           : null;
         return {
           nome: m.nome ?? null,
@@ -302,13 +309,12 @@ export default function Motoristas() {
       }
 
       const id = String(editedMotorista.id || editedMotorista.codigo_motorista || "");
-      // Fechar modal e usar mutateAsync; reabrir em caso de erro
-      setIsModalOpen(false);
       try {
         console.debug("atualizarMotorista - payload:", finalUpdatePayload);
         const res = await atualizarMotoristaMutation.mutateAsync({ id, payload: finalUpdatePayload });
         console.debug("atualizarMotorista - resposta:", res);
         if (res?.success) {
+          setIsModalOpen(false);
           toast.success(res.message ?? "Motorista atualizado com sucesso!");
           setErrosCampos({});
           setIsEditing(false);
@@ -318,31 +324,26 @@ export default function Motoristas() {
           navigate("/motoristas", { replace: true });
         } else {
           toast.error(res?.message ?? "Erro ao atualizar motorista");
-          setIsModalOpen(true);
         }
       } catch (e) {
         console.error(e);
         toast.error("Erro ao atualizar motorista");
-        setIsModalOpen(true);
       }
       return;
     }
 
-    // Fechar modal e usar mutateAsync; reabrir em caso de erro
-    setIsModalOpen(false);
     try {
       const res = await createMotoristaMutation.mutateAsync(finalPayload as any);
       if (res?.success) {
+        setIsModalOpen(false);
         toast.success("Motorista cadastrado com sucesso!");
         setErrosCampos({});
       } else {
         toast.error(res?.message || "Erro ao cadastrar motorista");
-        setIsModalOpen(true);
       }
     } catch (e) {
       console.error(e);
       toast.error("Erro ao conectar com a API");
-      setIsModalOpen(true);
     }
   };
 
@@ -969,6 +970,7 @@ export default function Motoristas() {
                         <p className="text-sm text-muted-foreground mb-1">Tipo de Chave PIX</p>
                         <p className="font-semibold">
                           {selectedMotorista.chave_pix_tipo === "cpf" && "CPF"}
+                          {selectedMotorista.chave_pix_tipo === "cnpj" && "CNPJ"}
                           {selectedMotorista.chave_pix_tipo === "email" && "E-mail"}
                           {selectedMotorista.chave_pix_tipo === "telefone" && "Telefone"}
                           {selectedMotorista.chave_pix_tipo === "aleatoria" && "Chave Aleatória"}
@@ -1018,7 +1020,7 @@ export default function Motoristas() {
       </Dialog>
 
       {/* Create/Edit Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={(open) => !isSaving && setIsModalOpen(open)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
@@ -1189,7 +1191,7 @@ export default function Motoristas() {
                     <Label htmlFor="chavePixTipo">Tipo de Chave PIX *</Label>
                     <Select
                       value={editedMotorista.chave_pix_tipo || "cpf"}
-                      onValueChange={(value: "cpf" | "email" | "telefone" | "aleatoria") =>
+                      onValueChange={(value: "cpf" | "cnpj" | "email" | "telefone" | "aleatoria") =>
                         setEditedMotorista({ ...editedMotorista, chave_pix_tipo: value })
                       }
                     >
@@ -1198,6 +1200,7 @@ export default function Motoristas() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="cpf">CPF</SelectItem>
+                        <SelectItem value="cnpj">CNPJ</SelectItem>
                         <SelectItem value="email">E-mail</SelectItem>
                         <SelectItem value="telefone">Telefone</SelectItem>
                         <SelectItem value="aleatoria">Chave Aleatória</SelectItem>
@@ -1205,14 +1208,16 @@ export default function Motoristas() {
                     </Select>
                   </div>
 
-                  {(editedMotorista.chave_pix_tipo === "cpf" || editedMotorista.chave_pix_tipo === "telefone") ? (
+                  {(editedMotorista.chave_pix_tipo === "cpf" || editedMotorista.chave_pix_tipo === "cnpj" || editedMotorista.chave_pix_tipo === "telefone") ? (
                     <InputMascarado
                       label="Chave PIX *"
                       id="chave_pix"
-                      tipoMascara={(editedMotorista.chave_pix_tipo as string) === "cpf" ? "cpf" : "telefone"}
+                      tipoMascara={(editedMotorista.chave_pix_tipo as string) === "telefone" ? "telefone" : "documento"}
                       placeholder={
                         editedMotorista.chave_pix_tipo === "cpf"
                           ? "000.000.000-00"
+                          : editedMotorista.chave_pix_tipo === "cnpj"
+                            ? "00.000.000/0000-00"
                           : "(11) 98765-4321"
                       }
                       value={editedMotorista.chave_pix || ""}
@@ -1326,17 +1331,12 @@ export default function Motoristas() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsModalOpen(false)}
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancelar
-            </Button>
-            <Button onClick={handleSave}>
-              <Save className="h-4 w-4 mr-2" />
-              {isEditing ? "Salvar Alterações" : "Cadastrar Motorista"}
-            </Button>
+            <ModalSubmitFooter
+              onCancel={() => setIsModalOpen(false)}
+              onSubmit={handleSave}
+              isSubmitting={isSaving}
+              submitLabel={isEditing ? "Salvar Alterações" : "Cadastrar Motorista"}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>

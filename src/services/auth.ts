@@ -41,7 +41,7 @@ interface LoginResult {
 export async function login(email: string, senha: string): Promise<ApiResponse<LoginResult>> {
   try {
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
-    const res = await api.post<BackendLoginResponse>("/auth/login", { email: normalizedEmail, senha });
+    const res = await api.post<BackendLoginResponse>("/login", { email: normalizedEmail, senha });
 
     const status = res.status;
     // Backend retorna: { success, message, token, usuario }

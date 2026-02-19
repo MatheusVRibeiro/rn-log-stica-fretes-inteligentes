@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -41,8 +41,10 @@ import caminhoesService from "@/services/caminhoes";
 import motoristasService from "@/services/motoristas";
 import type { Caminhao, CriarCaminhaoPayload, Motorista } from "@/types";
 import { formatPlaca, emptyToNull } from "@/lib/utils";
+import { sortMotoristasPorNome } from "@/lib/sortHelpers";
 import { formatarDocumento } from '@/utils/formatters';
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
+import { ModalSubmitFooter } from "@/components/shared/ModalSubmitFooter";
 
 const statusConfig = {
   disponivel: { label: "Disponível", variant: "active" as const },
@@ -53,6 +55,7 @@ const statusConfig = {
 
 export default function Frota() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -75,7 +78,7 @@ export default function Frota() {
   });
 
   const caminhoes = caminhoesResponse?.data || [];
-  const motoristasDisponiveis = motoristasResponse?.data || [];
+  const motoristasDisponiveis = sortMotoristasPorNome(motoristasResponse?.data || []);
   const [autoFilledFields, setAutoFilledFields] = useState<{ placa?: boolean; motorista?: boolean; proprietario_tipo?: boolean }>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -142,6 +145,7 @@ export default function Frota() {
       toast.error("Erro ao atualizar caminhão");
     },
   });
+  const isSaving = criarMutation.status === "pending" || editarMutation.status === "pending";
 
   const handleOpenNewModal = () => {
     setEditedCaminhao({
@@ -206,12 +210,26 @@ export default function Frota() {
       proprietario_tipo: caminhao.proprietario_tipo,
     });
     setIsEditing(true);
-    setSelectedCaminhao(null); // Limpa o modal de detalhes
+    setSelectedCaminhao(caminhao);
     setAutoFilledFields({});
     setIsModalOpen(true);
+    navigate(`/frota/editar/${caminhao.id}`, { replace: false });
   };
 
+  useEffect(() => {
+    if (!isModalOpen) {
+      const path = window.location.pathname || "";
+      if (path.startsWith("/frota/editar/")) {
+        navigate("/frota", { replace: true });
+      }
+      setIsEditing(false);
+      setSelectedCaminhao(null);
+    }
+  }, [isModalOpen, navigate]);
+
   const handleSave = () => {
+    if (isSaving) return;
+
     // Simple client-side validation to avoid 400 from backend
     const normalizePlate = (p?: string) => (p ? p.trim().toUpperCase() : "");
     const stripNonAlnum = (s: string) => s.replace(/[^A-Z0-9]/gi, "");
@@ -251,7 +269,7 @@ export default function Frota() {
       return;
     }
 
-    // Capacidade é opcional (backend aceita null). Valida apenas quando preenchida.
+    // Capacidade é opcional. Valida apenas quando preenchida.
     let capacidadeNormalized: number | null = null;
     if (editedCaminhao.capacidade_toneladas !== undefined && editedCaminhao.capacidade_toneladas !== null && String(editedCaminhao.capacidade_toneladas).trim() !== "") {
       const num = Number(editedCaminhao.capacidade_toneladas);
@@ -274,6 +292,14 @@ export default function Frota() {
       return v;
     };
 
+    // Determine proprietario_tipo based on motorista_fixo_id presence
+    let proprietarioTipo: string;
+    if (editedCaminhao.motorista_fixo_id) {
+      proprietarioTipo = "TERCEIRO";
+    } else {
+      proprietarioTipo = "PROPRIO";
+    }
+
     const payload: CriarCaminhaoPayload = {
       placa: placaNorm as string,
       modelo: String(editedCaminhao.modelo || ""),
@@ -287,7 +313,7 @@ export default function Frota() {
       motorista_fixo_id: editedCaminhao.motorista_fixo_id
         ? String(editedCaminhao.motorista_fixo_id)
         : null,
-      proprietario_tipo: mapProprietarioTipo(editedCaminhao.proprietario_tipo as any) as any,
+      proprietario_tipo: proprietarioTipo as any,
       renavam: editedCaminhao.renavam || undefined,
       chassi: editedCaminhao.chassi || undefined,
       registro_antt: editedCaminhao.registro_antt || undefined,
@@ -1073,7 +1099,7 @@ export default function Frota() {
       </Dialog>
 
       {/* Create/Edit Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={(open) => !isSaving && setIsModalOpen(open)}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1205,7 +1231,7 @@ export default function Frota() {
                 <div className="space-y-2">
                   <Label htmlFor="capacidadeToneladas" className="flex items-center gap-2">
                     <Weight className="h-4 w-4 text-primary" />
-                    Capacidade *
+                    Capacidade
                   </Label>
                   <div className="flex items-center gap-2">
                     <Input
@@ -1554,18 +1580,12 @@ export default function Frota() {
           </div>
 
           <DialogFooter className="gap-2 flex flex-col sm:flex-row">
-            <Button
-              variant="outline"
-              onClick={() => setIsModalOpen(false)}
-              className="flex items-center gap-2"
-            >
-              <X className="h-4 w-4" />
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} className="flex items-center gap-2 bg-primary hover:bg-primary/90">
-              <Save className="h-4 w-4" />
-              {isEditing ? "Salvar Alterações" : "Cadastrar Caminhão"}
-            </Button>
+            <ModalSubmitFooter
+              onCancel={() => setIsModalOpen(false)}
+              onSubmit={handleSave}
+              isSubmitting={isSaving}
+              submitLabel={isEditing ? "Salvar Alterações" : "Cadastrar Caminhão"}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>

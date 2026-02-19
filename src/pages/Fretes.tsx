@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { FilterBar } from "@/components/shared/FilterBar";
 import { DataTable } from "@/components/shared/DataTable";
 import { SkeletonTable } from "@/components/shared/Skeleton";
+import { ModalSubmitFooter } from "@/components/shared/ModalSubmitFooter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,6 +31,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 import {
   Dialog,
@@ -57,6 +60,7 @@ import {
 import { Plus, MapPin, ArrowRight, Truck, Package, DollarSign, TrendingUp, Edit, Save, X, Weight, Info, Calendar as CalendarIcon, Fuel, Wrench, AlertCircle, FileDown, FileText, Lock, Unlock, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { sortMotoristasPorNome, sortFazendasPorNome } from "@/lib/sortHelpers";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
@@ -91,7 +95,7 @@ interface EstoqueFazenda {
   id: string;
   fazendaId?: string;
   fazenda: string;
-  localizacao: string;
+  estado: string;
   mercadoria: string;
   variedade: string;
   quantidadeSacas: number;
@@ -255,6 +259,7 @@ export default function Fretes() {
   const itemsPerPage = 20;
   const [isNewFreteOpen, setIsNewFreteOpen] = useState(false);
   const [isEditingFrete, setIsEditingFrete] = useState(false);
+  const [isSavingFrete, setIsSavingFrete] = useState(false);
   const [newFrete, setNewFrete] = useState({
     origem: "",
     destino: "",
@@ -267,6 +272,9 @@ export default function Fretes() {
   });
   const [estoquesFazendas, setEstoquesFazendas] = useState<EstoqueFazenda[]>([]);
   const [estoqueSelecionado, setEstoqueSelecionado] = useState<EstoqueFazenda | null>(null);
+  const [caminhoesDoMotorista, setCaminhoesDoMotorista] = useState<any[]>([]);
+  const [carregandoCaminhoes, setCarregandoCaminhoes] = useState(false);
+  const [erroCaminhoes, setErroCaminhoes] = useState<string>("");
   
   // Estados para Exercício (Ano/Mês) e Fechamento
   const [tipoVisualizacao, setTipoVisualizacao] = useState<"mensal" | "trimestral" | "semestral" | "anual">("mensal");
@@ -281,12 +289,6 @@ export default function Fretes() {
     totalCustos: 8900,
     totalFretes: 12,
   };
-
-  // Locais de entrega fixos
-  const locaisEntregaFixos: string[] = [
-    "Fazenda Santa Rosa - Secagem e Armazenagem",
-    "Filial 1 - Secagem e Armazenagem",
-  ];
 
   // ========== QUERIES ==========
   // Carregar Motoristas
@@ -330,7 +332,7 @@ export default function Fretes() {
     ticket: freteAPI.ticket || undefined,
   }));
 
-  const motoristasState = Array.isArray(motoristasResponse?.data) ? motoristasResponse.data : [];
+  const motoristasState = sortMotoristasPorNome(Array.isArray(motoristasResponse?.data) ? motoristasResponse.data : []);
   const caminhoesState = Array.isArray(caminhoesData) ? caminhoesData : [];
   const fretesState = Array.isArray(fretesAPI) ? fretesAPI : [];
 
@@ -378,7 +380,7 @@ export default function Fretes() {
           id: f.id,
           fazendaId: f.id, // Usa id da fazenda
           fazenda: f.fazenda,
-          localizacao: f.localizacao || "",
+          estado: f.estado || "",
           mercadoria: f.mercadoria,
           variedade: f.variedade || "",
           quantidadeSacas: f.total_sacas_carregadas || 0,
@@ -388,7 +390,7 @@ export default function Fretes() {
           safra: f.safra || "",
           colheitaFinalizada: f.colheita_finalizada || false,
         }));
-      setEstoquesFazendas(fazendasFormatadas);
+      setEstoquesFazendas(sortFazendasPorNome(fazendasFormatadas));
       if (fazendasFormatadas.length === 0) {
         toast.warning("⚠️ Nenhuma fazenda com estoque disponível", {
           description: "Todas as fazendas já finalizaram a colheita.",
@@ -414,6 +416,48 @@ export default function Fretes() {
     setEstoqueSelecionado(null);
     setIsEditingFrete(false);
     setIsNewFreteOpen(true);
+  };
+
+  // Buscar caminhões do motorista selecionado
+  const handleMotoristaChange = async (motoristaId: string) => {
+    setCarregandoCaminhoes(true);
+    setErroCaminhoes("");
+    setCaminhoesDoMotorista([]);
+    
+    try {
+      const res = await caminhoesService.listarPorMotorista(motoristaId);
+      
+      if (res.success && res.data) {
+        setCaminhoesDoMotorista(res.data);
+        
+        if (res.data.length === 0) {
+          setErroCaminhoes("Motorista sem caminhões vinculados");
+          setNewFrete({ ...newFrete, motoristaId, caminhaoId: "" });
+        } else {
+          // Se só tem um caminhão, preenche automaticamente
+          if (res.data.length === 1) {
+            setNewFrete({ 
+              ...newFrete, 
+              motoristaId, 
+              caminhaoId: res.data[0].id 
+            });
+            toast.info(`Caminhão ${res.data[0].placa} preenchido automaticamente`);
+          } else {
+            // Se tiver mais de um, deixa o usuário escolher
+            setNewFrete({ ...newFrete, motoristaId, caminhaoId: "" });
+          }
+        }
+      } else {
+        setErroCaminhoes("Motorista inválido");
+        setNewFrete({ ...newFrete, motoristaId, caminhaoId: "" });
+      }
+    } catch (err) {
+      console.error("Erro ao buscar caminhões:", err);
+      setErroCaminhoes("Erro ao carregarcaminhões. Tente novamente.");
+      setNewFrete({ ...newFrete, motoristaId, caminhaoId: "" });
+    } finally {
+      setCarregandoCaminhoes(false);
+    }
   };
 
   const handleOpenEditModal = () => {
@@ -459,6 +503,9 @@ export default function Fretes() {
   }, [fretesParams.id, fretesState]);
 
   const handleSaveFrete = async () => {
+    if (isSavingFrete) return;
+    setIsSavingFrete(true);
+
     // Debug: mostrar estado atual ao tentar salvar
     console.debug("handleSaveFrete - newFrete:", newFrete, "estoqueSelecionado:", estoqueSelecionado);
 
@@ -469,6 +516,7 @@ export default function Fretes() {
       toast.error("❌ Preencha todos os campos obrigatórios!", {
         description: "Verifique destino, motorista, caminhão, fazenda, tonelagem e valor.",
       });
+      setIsSavingFrete(false);
       return;
     }
 
@@ -476,6 +524,7 @@ export default function Fretes() {
       toast.error("❌ Nenhuma fazenda selecionada", {
         description: "Escolha uma fazenda com estoque disponível para continuar.",
       });
+      setIsSavingFrete(false);
       return;
     }
 
@@ -484,6 +533,7 @@ export default function Fretes() {
       toast.error("❌ Tonelagem inválida", {
         description: "Digite um valor maior que zero.",
       });
+      setIsSavingFrete(false);
       return;
     }
 
@@ -492,6 +542,7 @@ export default function Fretes() {
       toast.error("❌ Valor por tonelada inválido", {
         description: "Digite um valor maior que zero.",
       });
+      setIsSavingFrete(false);
       return;
     }
 
@@ -508,6 +559,7 @@ export default function Fretes() {
       toast.error("❌ Dados incompletos", {
         description: "Não foi possível encontrar informações do motorista ou caminhão.",
       });
+      setIsSavingFrete(false);
       return;
     }
 
@@ -530,12 +582,13 @@ export default function Fretes() {
         duration: 3000,
       });
       setIsNewFreteOpen(false);
+      setIsSavingFrete(false);
       return;
     }
 
     // Preparar payload para API
     const payload = {
-      origem: `${estoqueSelecionado.fazenda} - ${estoqueSelecionado.localizacao}`,
+      origem: `${estoqueSelecionado.fazenda} - ${estoqueSelecionado.estado}`,
       destino: newFrete.destino,
       motorista_id: String(motorista.id),
       motorista_nome: motorista.nome,
@@ -569,7 +622,7 @@ export default function Fretes() {
       // Incrementar volume transportado da fazenda
       if (newFrete.fazendaId) {
         const incrementRes = await fazendasService.incrementarVolumeTransportado(
-          newFrete.fazendaId,
+          String(newFrete.fazendaId),
           toneladas
         );
         if (incrementRes.success) {
@@ -585,6 +638,19 @@ export default function Fretes() {
       // Recarregar fretes e fazendas para refletir mudanças
       queryClient.invalidateQueries({ queryKey: ["fretes"] });
       queryClient.invalidateQueries({ queryKey: ["fazendas"] });
+
+      setIsNewFreteOpen(false);
+      setNewFrete({
+        origem: "",
+        destino: "",
+        motoristaId: "",
+        caminhaoId: "",
+        fazendaId: "",
+        toneladas: "",
+        valorPorTonelada: "",
+        ticket: "",
+      });
+      setEstoqueSelecionado(null);
     } else {
       toast.dismiss(toastId);
       toast.error("❌ Erro ao cadastrar frete", {
@@ -593,18 +659,7 @@ export default function Fretes() {
       });
     }
 
-    setIsNewFreteOpen(false);
-    setNewFrete({
-      origem: "",
-      destino: "",
-      motoristaId: "",
-      caminhaoId: "",
-      fazendaId: "",
-      toneladas: "",
-      valorPorTonelada: "",
-      ticket: "",
-    });
-    setEstoqueSelecionado(null);
+    setIsSavingFrete(false);
   };
 
   const parseDateBR = (value: string) => {
@@ -633,7 +688,7 @@ export default function Fretes() {
   // Normaliza nomes de fazenda removendo sufixos como " - Tupã" para evitar duplicatas
   const normalizeFazendaNome = (nome?: string) => {
     if (!nome) return "";
-    return nome.split(" - ")[0].trim();
+    return nome.trim();
   };
 
   // Formata o código do frete para o padrão 'FRETE-YYYY-XXX' quando necessário
@@ -1416,7 +1471,7 @@ export default function Fretes() {
                   </Label>
                   <Input
                     id="ticket"
-                    placeholder="Ex: 0123"
+                    placeholder="0123"
                     value={newFrete.ticket}
                     onChange={(e) => setNewFrete({ ...newFrete, ticket: e.target.value })}
                   />
@@ -2033,7 +2088,7 @@ export default function Fretes() {
       </Dialog>
 
       {/* New/Edit Frete Modal */}
-      <Dialog open={isNewFreteOpen} onOpenChange={setIsNewFreteOpen}>
+      <Dialog open={isNewFreteOpen} onOpenChange={(open) => !isSavingFrete && setIsNewFreteOpen(open)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -2044,10 +2099,10 @@ export default function Fretes() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-6 max-h-[calc(90vh-200px)] overflow-y-auto px-1">
+          <div className="space-y-3 max-h-[calc(90vh-200px)] overflow-y-auto px-1">
             {/* Seção: Fazenda de Origem */}
             <div className="space-y-2">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-2">
                 <div className="h-1 w-1 rounded-full bg-green-600" />
                 <h3 className="font-semibold text-green-600">Fazenda de Origem</h3>
               </div>
@@ -2060,11 +2115,11 @@ export default function Fretes() {
                   <Select 
                     value={newFrete.fazendaId} 
                     onValueChange={(v) => {
-                      const estoque = estoquesFazendas.find(e => e.id === v);
+                      const estoque = estoquesFazendas.find(e => String(e.id) === String(v));
                       setEstoqueSelecionado(estoque || null);
                       setNewFrete({ 
                         ...newFrete, 
-                        fazendaId: estoque?.fazendaId || v,
+                        fazendaId: String(estoque?.fazendaId || v),
                         valorPorTonelada: estoque ? estoque.precoPorTonelada.toString() : ""
                       });
                     }}
@@ -2076,11 +2131,32 @@ export default function Fretes() {
                       {!Array.isArray(estoquesFazendas) || estoquesFazendas.length === 0 ? (
                         <SelectItem value="none" disabled>Nenhuma fazenda cadastrada</SelectItem>
                       ) : (
-                        estoquesFazendas.map((e) => (
-                          <SelectItem key={e.id} value={e.id}>
-                            {normalizeFazendaNome(e.fazenda)}
-                          </SelectItem>
-                        ))
+                        (() => {
+                          // Agrupar fazendas por estado
+                          const grouped = estoquesFazendas.reduce((acc, e) => {
+                            if (!acc[e.estado]) {
+                              acc[e.estado] = [];
+                            }
+                            acc[e.estado].push(e);
+                            return acc;
+                          }, {} as Record<string, typeof estoquesFazendas>);
+                          
+                          // Ordenar estados: SP primeiro, depois MS, depois outros
+                          const estadosOrdenados = ['SP', 'MS', ...Object.keys(grouped).filter(e => e !== 'SP' && e !== 'MS')];
+                          
+                          return estadosOrdenados
+                            .filter(estado => estado in grouped)
+                            .map((estado) => (
+                            <SelectGroup key={estado}>
+                              <SelectLabel className="font-semibold text-primary">{estado}</SelectLabel>
+                              {grouped[estado].map((e) => (
+                                <SelectItem key={e.id} value={String(e.id)}>
+                                  {normalizeFazendaNome(e.fazenda)}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ));
+                        })()
                       )}
                     </SelectContent>
                   </Select>
@@ -2096,8 +2172,8 @@ export default function Fretes() {
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
-                          <p className="text-muted-foreground">Localização:</p>
-                          <p className="font-medium">{estoqueSelecionado.localizacao}</p>
+                          <p className="text-muted-foreground">Estado:</p>
+                          <p className="font-medium">{estoqueSelecionado.estado}</p>
                         </div>
                         <div>
                           <p className="text-muted-foreground">Mercadoria:</p>
@@ -2120,11 +2196,6 @@ export default function Fretes() {
                           <p className="font-medium">{estoqueSelecionado.pesoMedioSaca}kg</p>
                         </div>
                       </div>
-                      <div className="p-2 bg-blue-50 dark:bg-blue-950/20 rounded border border-blue-200 dark:border-blue-800">
-                        <p className="text-xs text-blue-700 dark:text-blue-300">
-                          <strong>ℹ️ Nota:</strong> A produção desta fazenda será incrementada automaticamente ao cadastrar o frete.
-                        </p>
-                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -2135,7 +2206,7 @@ export default function Fretes() {
 
             {/* Seção: Destino */}
             <div className="space-y-2">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-2">
                 <div className="h-1 w-1 rounded-full bg-primary" />
                 <h3 className="font-semibold text-foreground">Destino</h3>
               </div>
@@ -2146,17 +2217,14 @@ export default function Fretes() {
                 </Label>
                 <Select
                   value={newFrete.destino}
-                  onValueChange={(value) => setNewFrete({ ...newFrete, destino: value })}
+                  onValueChange={(v) => setNewFrete({ ...newFrete, destino: v })}
                 >
                   <SelectTrigger id="destino">
                     <SelectValue placeholder="Selecione o local de entrega" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-64 overflow-y-auto">
-                    {locaisEntregaFixos.map((local) => (
-                      <SelectItem key={local} value={local}>
-                        {local}
-                      </SelectItem>
-                    ))}
+                  <SelectContent>
+                    <SelectItem value="Filial 1 - Secagem e Armazenagem">Filial 1 - Secagem e Armazenagem</SelectItem>
+                    <SelectItem value="Fazenda Santa Rosa - Secagem e Armazenagem">Fazenda Santa Rosa - Secagem e Armazenagem</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="space-y-2 mt-2">
@@ -2166,7 +2234,7 @@ export default function Fretes() {
                   </Label>
                   <Input
                     id="ticket-frete"
-                    placeholder="Ex: TCK-12345"
+                    placeholder="0123"
                     value={newFrete.ticket}
                     onChange={(e) => setNewFrete({ ...newFrete, ticket: e.target.value })}
                   />
@@ -2178,7 +2246,7 @@ export default function Fretes() {
 
             {/* Seção: Equipe */}
             <div className="space-y-2">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-2">
                 <div className="h-1 w-1 rounded-full bg-primary" />
                 <h3 className="font-semibold text-foreground">Equipe & Veículo</h3>
               </div>
@@ -2190,22 +2258,7 @@ export default function Fretes() {
                   </Label>
                   <Select 
                     value={newFrete.motoristaId} 
-                    onValueChange={(v) => {
-                      // Buscar caminhão que tem esse motorista como fixo
-                      const caminhaoDoMotorista = caminhoesState.find(c => c.motorista_fixo_id === v);
-                      
-                      // Se encontrou caminhão fixo, preencher automaticamente
-                      if (caminhaoDoMotorista) {
-                        setNewFrete({ 
-                          ...newFrete, 
-                          motoristaId: v,
-                          caminhaoId: caminhaoDoMotorista.id 
-                        });
-                        toast.info(`Caminhão ${caminhaoDoMotorista.placa} preenchido automaticamente`);
-                      } else {
-                        setNewFrete({ ...newFrete, motoristaId: v, caminhaoId: "" });
-                      }
-                    }}
+                    onValueChange={handleMotoristaChange}
                   >
                     <SelectTrigger id="motorista">
                       <SelectValue placeholder="Selecione um motorista" />
@@ -2232,40 +2285,47 @@ export default function Fretes() {
                     <Truck className="h-4 w-4 text-primary" />
                     Caminhão *
                   </Label>
-                  {(() => {
-                    // Busca o caminhão que tem este motorista como fixo
-                    const caminhaoFixo = caminhoesState.find(c => c.motorista_fixo_id === newFrete.motoristaId);
-                    
-                    if (caminhaoFixo) {
-                      return (
-                        <div className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-muted/50 px-3 py-2 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Truck className="h-4 w-4 text-primary" />
-                            <span className="font-medium">{caminhaoFixo.placa}</span>
-                          </div>
-                          <span className="text-xs text-muted-foreground">Fixo</span>
-                        </div>
-                      );
-                    }
-                    
-                    return (
-                      <Select 
-                        value={newFrete.caminhaoId} 
-                        onValueChange={(v) => setNewFrete({ ...newFrete, caminhaoId: v })}
-                      >
-                        <SelectTrigger id="caminhao">
-                          <SelectValue placeholder="Selecione um caminhão" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.isArray(caminhoesState) && caminhoesState.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.placa}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    );
-                  })()}
+                  {!newFrete.motoristaId ? (
+                    <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                      Selecione um motorista primeiro
+                    </div>
+                  ) : carregandoCaminhoes ? (
+                    <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                      ⏳ Carregando caminhões...
+                    </div>
+                  ) : erroCaminhoes ? (
+                    <div className="flex h-10 w-full items-center rounded-md border border-red-200 bg-red-50 dark:bg-red-950/20 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+                      ❌ {erroCaminhoes}
+                    </div>
+                  ) : caminhoesDoMotorista.length === 0 ? (
+                    <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                      Nenhum caminhão disponível
+                    </div>
+                  ) : caminhoesDoMotorista.length === 1 ? (
+                    <div className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-muted/50 px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4 text-primary" />
+                        <span className="font-medium">{caminhoesDoMotorista[0].placa}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">Único</span>
+                    </div>
+                  ) : (
+                    <Select 
+                      value={newFrete.caminhaoId} 
+                      onValueChange={(v) => setNewFrete({ ...newFrete, caminhaoId: v })}
+                    >
+                      <SelectTrigger id="caminhao">
+                        <SelectValue placeholder="Selecione um caminhão" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {caminhoesDoMotorista.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.placa}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
             </div>
@@ -2274,7 +2334,7 @@ export default function Fretes() {
 
             {/* Seção: Carga */}
             <div className="space-y-2">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-2">
                 <div className="h-1 w-1 rounded-full bg-blue-600" />
                 <h3 className="font-semibold text-blue-600">Quantidade de Carga</h3>
               </div>
@@ -2310,21 +2370,26 @@ export default function Fretes() {
                 <div className="space-y-2">
                   <Label htmlFor="valorTonelada" className="flex items-center gap-2">
                     <DollarSign className="h-4 w-4 text-green-600" />
-                    Valor por Tonelada (R$) *
+                    Valor por Tonelada *
                   </Label>
-                  <Input
-                    id="valorTonelada"
-                    type="number"
-                    placeholder="Ex: 600.00"
-                    step="0.01"
-                    min="0.01"
-                    value={newFrete.valorPorTonelada}
-                    onChange={(e) => setNewFrete({ ...newFrete, valorPorTonelada: e.target.value })}
-                    disabled={!estoqueSelecionado}
-                    className="bg-blue-50 dark:bg-blue-950/20"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                      R$
+                    </span>
+                    <Input
+                      id="valorTonelada"
+                      type="number"
+                      placeholder="Ex: 600.00"
+                      step="0.01"
+                      min="0.01"
+                      className="pl-12"
+                      value={newFrete.valorPorTonelada}
+                      onChange={(e) => setNewFrete({ ...newFrete, valorPorTonelada: e.target.value })}
+                      disabled={!estoqueSelecionado}
+                    />
+                  </div>
                   {estoqueSelecionado && (
-                    <p className="text-xs text-blue-600">
+                    <p className="text-xs text-green-600">
                       ✓ Preço cadastrado na fazenda: R$ {estoqueSelecionado.precoPorTonelada.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/ton
                     </p>
                   )}
@@ -2366,9 +2431,8 @@ export default function Fretes() {
           </div>
 
           <DialogFooter className="gap-2 flex flex-col sm:flex-row">
-            <Button
-              variant="outline"
-              onClick={() => {
+            <ModalSubmitFooter
+              onCancel={() => {
                 setIsNewFreteOpen(false);
                 setNewFrete({
                   origem: "",
@@ -2382,14 +2446,11 @@ export default function Fretes() {
                 });
                 setEstoqueSelecionado(null);
               }}
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveFrete}>
-              <Save className="h-4 w-4 mr-2" />
-              {isEditingFrete ? "Salvar Alterações" : "Criar Frete"}
-            </Button>
+              onSubmit={handleSaveFrete}
+              isSubmitting={isSavingFrete}
+              disableSubmit={isSavingFrete}
+              submitLabel={isEditingFrete ? "Salvar Alterações" : "Criar Frete"}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>

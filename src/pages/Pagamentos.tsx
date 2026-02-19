@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { PeriodoFilter } from "@/components/shared/PeriodoFilter";
 import { FilterBar } from "@/components/shared/FilterBar";
 import { DataTable } from "@/components/shared/DataTable";
+import { ModalSubmitFooter } from "@/components/shared/ModalSubmitFooter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -235,6 +236,7 @@ export default function Pagamentos() {
   const [selectedPagamento, setSelectedPagamento] = useState<PagamentoMotorista | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [editedPagamento, setEditedPagamento] = useState<Partial<PagamentoMotorista>>({});
   const [dataPagamentoSelected, setDataPagamentoSelected] = useState<Date | undefined>();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -374,14 +376,17 @@ export default function Pagamentos() {
         toast.success("Pagamento registrado com sucesso!");
         setIsModalOpen(false);
         setSelectedFretes([]);
+        setIsSaving(false);
       } else {
         toast.error(response.message || "Erro ao criar pagamento");
+        setIsSaving(false);
       }
     },
     onError: (error: any) => {
       const isNetwork = !error?.response;
       const msg = isNetwork ? "Erro de rede, tente novamente" : (error?.response?.data?.message || error?.message || "Erro ao criar pagamento");
       toast.error(msg);
+      setIsSaving(false);
       // If backend indicates some fretes already paid, refresh pending list to sync UI
       if (String(msg).toLowerCase().includes("alguns fretes ja") || String(msg).toLowerCase().includes("alguns fretes já") || String(msg).toLowerCase().includes("já estão pagos")) {
         if (motoristaIdForPendentes) {
@@ -403,14 +408,17 @@ export default function Pagamentos() {
         queryClient.invalidateQueries({ queryKey: ["fretes"] });
         toast.success("Pagamento atualizado com sucesso!");
         setIsModalOpen(false);
+        setIsSaving(false);
       } else {
         toast.error(response.message || "Erro ao atualizar pagamento");
+        setIsSaving(false);
       }
     },
     onError: (error: any) => {
       const isNetwork = !error?.response;
       const msg = isNetwork ? "Erro de rede, tente novamente" : (error?.response?.data?.message || error?.message || "Erro ao atualizar pagamento");
       toast.error(msg);
+      setIsSaving(false);
       if (String(msg).toLowerCase().includes("alguns fretes ja") || String(msg).toLowerCase().includes("alguns fretes já") || String(msg).toLowerCase().includes("já estão pagos")) {
         if (motoristaIdForPendentes) {
           queryClient.invalidateQueries({ queryKey: ["fretes", "pendentes", motoristaIdForPendentes] });
@@ -575,14 +583,19 @@ export default function Pagamentos() {
 
   const handleSave = () => {
     // prevent double-submit
-    if (createMutation.status === "pending" || updateMutation.status === "pending") return;
+    const isMutationPending = createMutation.status === "pending" || updateMutation.status === "pending";
+    if (isMutationPending) return;
+    setIsSaving(true);
+
     if (!editedPagamento.motoristaId) {
       toast.error("Selecione um motorista");
+      setIsSaving(false);
       return;
     }
 
     if (selectedFretes.length === 0) {
       toast.error("Selecione pelo menos um frete para pagamento");
+      setIsSaving(false);
       return;
     }
 
@@ -599,6 +612,7 @@ export default function Pagamentos() {
       toast.error("Um ou mais fretes selecionados já estão vinculados a outro pagamento.");
       // refresh pendentes to sync UI
       if (motoristaIdForPendentes) queryClient.invalidateQueries({ queryKey: ["fretes", "pendentes", motoristaIdForPendentes] });
+      setIsSaving(false);
       return;
     }
 
@@ -1801,7 +1815,7 @@ export default function Pagamentos() {
       </Dialog>
 
       {/* Create/Edit Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={(open) => !isSaving && setIsModalOpen(open)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
@@ -2256,17 +2270,13 @@ export default function Pagamentos() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsModalOpen(false)}
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} disabled={createMutation.status === "pending" || updateMutation.status === "pending"}>
-              <Save className="h-4 w-4 mr-2" />
-              {isEditing ? "Salvar Alterações" : "Registrar Pagamento"}
-            </Button>
+            <ModalSubmitFooter
+              onCancel={() => setIsModalOpen(false)}
+              onSubmit={handleSave}
+              isSubmitting={isSaving}
+              disableSubmit={isSaving}
+              submitLabel={isEditing ? "Salvar Alterações" : "Registrar Pagamento"}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>

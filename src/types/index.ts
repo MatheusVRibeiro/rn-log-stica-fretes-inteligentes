@@ -148,7 +148,7 @@ export interface Fazenda {
   id: string;
   codigo_fazenda: string;
   fazenda: string;
-  localizacao?: string | null;
+  estado?: "SP" | "MS" | "MT" | null;
   proprietario?: string | null;
   mercadoria: string;
   variedade?: string | null;
@@ -175,7 +175,7 @@ export interface Fazenda {
 export interface CriarFazendaPayload {
   id?: string;
   fazenda: string;
-  localizacao?: string;
+  estado?: "SP" | "MS" | "MT";
   proprietario?: string;
   mercadoria: string;
   variedade?: string;

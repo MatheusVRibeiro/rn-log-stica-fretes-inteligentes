@@ -2,10 +2,43 @@ import api from "@/api/axios";
 import { isAxiosError } from "axios";
 import type { Fazenda, CriarFazendaPayload, ApiResponse } from "@/types";
 
+type FazendaBackend = Fazenda & {
+  nome?: string;
+  localizacao?: string;
+  estado?: "SP" | "MS" | "MT";
+};
+
+const normalizeFazendaFromBackend = (item: FazendaBackend): Fazenda => ({
+  ...item,
+  fazenda: item.fazenda ?? item.nome ?? "",
+  estado: item.estado ?? (item.localizacao as "SP" | "MS" | "MT" | undefined) ?? null,
+});
+
+const normalizeListResponse = (data: unknown): Fazenda[] => {
+  if (!Array.isArray(data)) return [];
+  return data.map((item) => normalizeFazendaFromBackend(item as FazendaBackend));
+};
+
+const normalizeSingleResponse = (data: unknown): Fazenda | null => {
+  if (!data || typeof data !== "object") return null;
+  return normalizeFazendaFromBackend(data as FazendaBackend);
+};
+
+const normalizePayloadToBackend = (payload: CriarFazendaPayload | Partial<CriarFazendaPayload>) => {
+  const normalized = { ...payload };
+
+  if (typeof normalized.fazenda === "string") {
+    normalized.fazenda = normalized.fazenda.trim();
+  }
+
+  return normalized;
+};
+
 const listarFazendas = async (): Promise<ApiResponse<Fazenda[]>> => {
   try {
     const res = await api.get("/fazendas");
-    return { success: true, data: res.data.data || res.data, status: res.status };
+    const data = normalizeListResponse(res.data.data || res.data);
+    return { success: true, data, status: res.status };
   } catch (err: unknown) {
     let message = "Erro ao listar fazendas";
     if (isAxiosError(err)) {
@@ -24,7 +57,8 @@ const listarFazendas = async (): Promise<ApiResponse<Fazenda[]>> => {
 const obterFazenda = async (id: string): Promise<ApiResponse<Fazenda>> => {
   try {
     const res = await api.get(`/fazendas/${id}`);
-    return { success: true, data: res.data.data || res.data, status: res.status };
+    const data = normalizeSingleResponse(res.data.data || res.data);
+    return { success: true, data, status: res.status };
   } catch (err: unknown) {
     let message = "Erro ao obter fazenda";
     if (isAxiosError(err)) {
@@ -42,8 +76,9 @@ const obterFazenda = async (id: string): Promise<ApiResponse<Fazenda>> => {
 
 const criarFazenda = async (payload: CriarFazendaPayload): Promise<ApiResponse<Fazenda>> => {
   try {
-    const res = await api.post("/fazendas", payload);
-    return { success: true, data: res.data.data || res.data, status: res.status };
+    const res = await api.post("/fazendas", normalizePayloadToBackend(payload));
+    const data = normalizeSingleResponse(res.data.data || res.data);
+    return { success: true, data, status: res.status };
   } catch (err: unknown) {
     let message = "Erro ao criar fazenda";
     if (isAxiosError(err)) {
@@ -64,8 +99,9 @@ const atualizarFazenda = async (
   payload: Partial<CriarFazendaPayload>
 ): Promise<ApiResponse<Fazenda>> => {
   try {
-    const res = await api.put(`/fazendas/${id}`, payload);
-    return { success: true, data: res.data.data || res.data, status: res.status };
+    const res = await api.put(`/fazendas/${id}`, normalizePayloadToBackend(payload));
+    const data = normalizeSingleResponse(res.data.data || res.data);
+    return { success: true, data, status: res.status };
   } catch (err: unknown) {
     let message = "Erro ao atualizar fazenda";
     if (isAxiosError(err)) {
@@ -106,7 +142,8 @@ const incrementarVolumeTransportado = async (
 ): Promise<ApiResponse<Fazenda>> => {
   try {
     const res = await api.post(`/fazendas/${id}/incrementar-volume`, { toneladas });
-    return { success: true, data: res.data.data || res.data, status: res.status };
+    const data = normalizeSingleResponse(res.data.data || res.data);
+    return { success: true, data, status: res.status };
   } catch (err: unknown) {
     let message = "Erro ao incrementar volume";
     if (isAxiosError(err)) {

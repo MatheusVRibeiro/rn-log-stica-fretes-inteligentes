@@ -7,6 +7,7 @@ import { PeriodoFilter } from "@/components/shared/PeriodoFilter";
 import { FilterBar } from "@/components/shared/FilterBar";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatCard } from "@/components/shared/StatCard";
+import { ModalSubmitFooter } from "@/components/shared/ModalSubmitFooter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -236,6 +237,8 @@ export default function Custos() {
   };
 
   const handleSave = () => {
+    if (isSaving) return;
+
     if (!formData.frete_id || !formData.tipo || !formData.valor || !formData.data) {
       toast.error("Preencha todos os campos obrigatorios!");
       return;
@@ -1377,7 +1380,7 @@ export default function Custos() {
       )}
 
       {/* New Cost Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={(open) => !isSaving && setIsModalOpen(open)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-6">
           <DialogHeader>
             <DialogTitle>{editingCusto ? "Editar Custo" : "Novo Custo"}</DialogTitle>
@@ -1578,21 +1581,16 @@ export default function Custos() {
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
+            <ModalSubmitFooter
+              onCancel={() => {
                 setIsModalOpen(false);
                 setEditingCusto(null);
               }}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={createMutation.isPending || updateMutation.isPending}
-            >
-              {editingCusto ? "Salvar Alterações" : "Cadastrar Custo"}
-            </Button>
+              onSubmit={handleSave}
+              isSubmitting={isSaving}
+              disableSubmit={isSaving}
+              submitLabel={editingCusto ? "Salvar Alterações" : "Cadastrar Custo"}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>
