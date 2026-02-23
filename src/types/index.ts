@@ -54,7 +54,7 @@ export interface CriarCaminhaoPayload {
 }
 
 export interface Motorista {
-    codigo_motorista: string;
+  codigo_motorista: string;
   id: string;
   nome: string;
   documento: string;
@@ -261,6 +261,28 @@ export interface Pagamento {
   observacoes?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PagamentoMotorista {
+  id: string;
+  motoristaId: string;
+  motoristaNome: string;
+  tipoRelatorio?: "GUIA_INTERNA" | "PAGAMENTO_TERCEIRO";
+  dataFrete: string;
+  toneladas: number;
+  fretes: number;
+  valorUnitarioPorTonelada: number;
+  valorTotal: number;
+  fretesSelecionados?: string[];
+  dataPagamento: string;
+  statusPagamento: "pendente" | "processando" | "pago" | "cancelado";
+  metodoPagamento: "pix" | "transferencia_bancaria";
+  comprovante?: {
+    nome: string;
+    url: string;
+    datadoUpload: string;
+  };
+  observacoes?: string;
 }
 
 export interface CriarPagamentoPayload {
