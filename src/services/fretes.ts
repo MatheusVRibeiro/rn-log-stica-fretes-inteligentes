@@ -2,10 +2,7 @@ import api from "@/api/axios";
 import { isAxiosError } from "axios";
 import type { ApiResponse, Frete, CriarFretePayload } from "@/types";
 
-export interface AtualizarFreteCustosPayload {
-  custos: number;
-  resultado: number;
-}
+export type AtualizarFretePayload = Partial<CriarFretePayload>;
 
 interface BackendFretesResponse {
   success: boolean;
@@ -26,7 +23,7 @@ export async function listarFretes(params?: { page?: number; limit?: number }): 
     const res = await api.get<BackendFretesResponse>("/fretes", {
       params: { page, limit },
     });
-    
+
     if (res.data.success && res.data.data) {
       return { success: true, data: res.data.data, meta: res.data.meta, status: res.status };
     }
@@ -50,7 +47,7 @@ export async function listarFretes(params?: { page?: number; limit?: number }): 
 export async function criarFrete(payload: CriarFretePayload): Promise<ApiResponse<{ id: string }>> {
   try {
     const res = await api.post<BackendFreteResponse>("/fretes", payload);
-    
+
     if (res.data.success && res.data.data) {
       return {
         success: true,
@@ -80,11 +77,11 @@ export async function criarFrete(payload: CriarFretePayload): Promise<ApiRespons
 export async function obterFrete(id: string): Promise<ApiResponse<Frete>> {
   try {
     const res = await api.get<{ success: boolean; message: string; data: Frete }>(`/fretes/${id}`);
-    
+
     if (res.data.success && res.data.data) {
       return { success: true, data: res.data.data };
     }
-    
+
     return { success: false, data: null, message: "Frete não encontrado" };
   } catch (err: unknown) {
     let message = "Erro ao obter frete";
@@ -132,7 +129,7 @@ export async function listarFretesPendentes(params?: { motoristaId?: string; pro
 }
 export async function atualizarFrete(
   id: string,
-  payload: AtualizarFreteCustosPayload
+  payload: AtualizarFretePayload
 ): Promise<ApiResponse<Frete>> {
   try {
     const res = await api.put<{ success: boolean; message: string; data: Frete }>(

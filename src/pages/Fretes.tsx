@@ -266,6 +266,7 @@ export default function Fretes() {
   const [isSavingFrete, setIsSavingFrete] = useState(false);
 
   const [newFrete, setNewFrete] = useState({
+    id: "",
     origem: "",
     destino: "",
     motoristaId: "",
@@ -492,6 +493,7 @@ export default function Fretes() {
     }
 
     setNewFrete({
+      id: "",
       origem: "",
       destino: "",
       motoristaId: "",
@@ -658,6 +660,7 @@ export default function Fretes() {
       const resolvedFazendaId = await loadEstoquesForEdit(selectedFrete);
       await loadCaminhoesForEdit(selectedFrete.motoristaId, selectedFrete.caminhaoId);
       setNewFrete({
+        id: String(selectedFrete.id),
         origem: "",
         destino: selectedFrete.destino,
         motoristaId: selectedFrete.motoristaId,
@@ -697,6 +700,7 @@ export default function Fretes() {
         });
         loadCaminhoesForEdit(found.motoristaId, found.caminhaoId);
         setNewFrete({
+          id: String(found.id),
           origem: "",
           destino: found.destino,
           motoristaId: found.motoristaId,
@@ -827,16 +831,6 @@ export default function Fretes() {
     // Valores apenas para exibição no modal (cálculo estimado)
     const custoEstimado = Math.floor(custoCombustivel + custoMotoristaTotal);
 
-    if (isEditingFrete) {
-      toast.success("✅ Frete atualizado", {
-        description: `Frete ID ${selectedFrete?.id} foi atualizado com sucesso.`,
-        duration: 3000,
-      });
-      setIsNewFreteOpen(false);
-      setIsSavingFrete(false);
-      return;
-    }
-
     const toUpper = (value: string) => value.trim().toUpperCase();
     const toUpperOrUndefined = (value?: string | null) => {
       const trimmed = (value ?? "").trim();
@@ -861,9 +855,42 @@ export default function Fretes() {
       toneladas: toneladas,
       valor_por_tonelada: valorPorTonelada,
       custos: custos,
+      resultado: (toneladas * valorPorTonelada) - custos,
       ticket: newFrete.ticket || null,
       numero_nota_fiscal: newFrete.numeroNotaFiscal || null,
     };
+
+    if (isEditingFrete) {
+      startRefresh();
+      const toastId = toast.loading("📦 Salvando edições...");
+      fretesService.atualizarFrete(newFrete.id, payload).then((res) => {
+        if (res.success) {
+          toast.dismiss(toastId);
+          toast.success("✅ Frete atualizado", {
+            description: `Frete ID ${newFrete.id} foi atualizado com sucesso.`,
+            duration: 3000,
+          });
+          queryClient.invalidateQueries({ queryKey: ["fretes"] });
+          queryClient.invalidateQueries({ queryKey: ["fazendas"] });
+          setIsNewFreteOpen(false);
+        } else {
+          toast.dismiss(toastId);
+          const handleError = applyBackendFieldError(res.field, res.message);
+          if (!handleError) {
+            toast.error("❌ Erro ao atualizar frete", {
+              description: res.message || "Tente novamente em alguns momentos.",
+              duration: 4000,
+            });
+          }
+        }
+      }).finally(() => {
+        setIsSavingFrete(false);
+        endRefresh();
+      });
+      return;
+    }
+
+
 
     // Criar frete via API
     startRefresh();
@@ -902,6 +929,7 @@ export default function Fretes() {
 
       setIsNewFreteOpen(false);
       setNewFrete({
+        id: "",
         origem: "",
         destino: "",
         motoristaId: "",
