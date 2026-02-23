@@ -14,30 +14,37 @@ export function usePeriodoFilter<T>({ data, getDataField }: UsePeriodoFilterProp
   const [selectedPeriodo, setSelectedPeriodo] = useState(format(new Date(), "yyyy-MM"));
 
   // Função auxiliar para parsear datas
-  const parseDateBR = (value: string) => {
-    if (!value) return new Date();
-    
+  const parseDateBR = (value: unknown) => {
+    // Guard robusta contra null, undefined, números, objetos, etc.
+    if (value === null || value === undefined) return new Date();
+    const str = String(value).trim();
+    if (!str || str === "null" || str === "undefined") return new Date();
+
     // Formato brasileiro: dd/MM/yyyy
-    if (value.includes("/")) {
-      const [dia, mes, ano] = value.split("/");
-      return new Date(Number(ano), Number(mes) - 1, Number(dia));
+    if (str.includes("/")) {
+      const parts = str.split("/");
+      if (parts.length === 3) {
+        const [dia, mes, ano] = parts;
+        const d = new Date(Number(ano), Number(mes) - 1, Number(dia));
+        return Number.isNaN(d.getTime()) ? new Date() : d;
+      }
     }
-    
+
     // Formato ISO completo: 2026-02-10T03:00:00.000Z ou ISO simples: 2026-02-10
-    const date = new Date(value);
+    const date = new Date(str);
     return Number.isNaN(date.getTime()) ? new Date() : date;
   };
 
   // Extrair períodos disponíveis baseado nos dados reais
   const periodosDisponiveis = useMemo(() => {
     if (!Array.isArray(data) || data.length === 0) return [];
-    
+
     const periodos = data.map((item) => {
       const dataStr = getDataField(item);
       const itemDate = parseDateBR(dataStr);
       const anoItem = itemDate.getFullYear();
       const mesItem = itemDate.getMonth() + 1; // 1-12
-      
+
       if (tipoVisualizacao === "mensal") {
         return `${anoItem}-${String(mesItem).padStart(2, "0")}`;
       } else if (tipoVisualizacao === "trimestral") {
@@ -51,7 +58,7 @@ export function usePeriodoFilter<T>({ data, getDataField }: UsePeriodoFilterProp
       }
       return "";
     });
-    
+
     // Remover duplicatas e ordenar
     const periodosUnicos = Array.from(new Set(periodos)).filter(Boolean).sort();
     return periodosUnicos;
@@ -60,13 +67,13 @@ export function usePeriodoFilter<T>({ data, getDataField }: UsePeriodoFilterProp
   // Filtrar dados por período
   const dadosFiltrados = useMemo(() => {
     if (!Array.isArray(data)) return [];
-    
+
     return data.filter((item) => {
       const dataStr = getDataField(item);
       const itemDate = parseDateBR(dataStr);
       const anoItem = itemDate.getFullYear();
       const mesItem = itemDate.getMonth() + 1; // 1-12
-      
+
       if (tipoVisualizacao === "mensal") {
         const periodoItem = `${anoItem}-${String(mesItem).padStart(2, "0")}`;
         return periodoItem === selectedPeriodo;
@@ -106,7 +113,7 @@ export function usePeriodoFilter<T>({ data, getDataField }: UsePeriodoFilterProp
   // Validar se período selecionado existe nos dados
   useEffect(() => {
     if (periodosDisponiveis.length === 0) return;
-    
+
     // Se período atual não existe, usar o mais recente
     if (!periodosDisponiveis.includes(selectedPeriodo)) {
       setSelectedPeriodo(periodosDisponiveis[periodosDisponiveis.length - 1]);
@@ -116,12 +123,12 @@ export function usePeriodoFilter<T>({ data, getDataField }: UsePeriodoFilterProp
   // Handler para mudança de tipo de visualização
   const handleTipoChange = (novoTipo: TipoVisualizacao) => {
     setTipoVisualizacao(novoTipo);
-    
+
     // Resetar período para valor adequado ao tipo
     setTimeout(() => {
       const hoje = new Date();
       let periodoIdeal = "";
-      
+
       if (novoTipo === "mensal") {
         periodoIdeal = format(hoje, "yyyy-MM");
       } else if (novoTipo === "trimestral") {
@@ -133,7 +140,7 @@ export function usePeriodoFilter<T>({ data, getDataField }: UsePeriodoFilterProp
       } else if (novoTipo === "anual") {
         periodoIdeal = String(hoje.getFullYear());
       }
-      
+
       setSelectedPeriodo(periodoIdeal);
     }, 0);
   };
