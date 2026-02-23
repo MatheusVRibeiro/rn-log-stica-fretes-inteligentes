@@ -1,4 +1,4 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from "axios";
 import { clearSessionStorage, SESSION_EXPIRED_MESSAGE, STORAGE_KEYS } from "@/auth/session";
 import * as authService from "@/services/auth";
 import { toast } from "sonner";
@@ -7,7 +7,7 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? "https://api.caramellologistica.com",
   // baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:3000/",
 
-  
+
   headers: {
     "Content-Type": "application/json",
   },
@@ -43,18 +43,18 @@ const shouldSkipRefresh = (config?: InternalAxiosRequestConfig) => {
 };
 
 api.interceptors.request.use(
-  (config) => {
+  (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem(STORAGE_KEYS.accessToken);
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error: any) => Promise.reject(error)
 );
 
 api.interceptors.response.use(
-  (response) => response,
+  (response: AxiosResponse) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const status = error.response?.status;
@@ -62,7 +62,7 @@ api.interceptors.response.use(
       || (error.response?.data as { message?: string; error?: string } | undefined)?.error;
 
     // Verificar se é erro de autenticação por mensagens típicas
-    const isAuthError = 
+    const isAuthError =
       status === 401 ||
       responseMessage?.toLowerCase().includes("token não fornecido") ||
       responseMessage?.toLowerCase().includes("token inválido") ||
@@ -97,7 +97,7 @@ api.interceptors.response.use(
     if (!refreshPromise) {
       refreshPromise = authService
         .refreshToken(storedRefreshToken)
-        .then((res) => {
+        .then((res: any) => {
           if (!res.success || !res.data?.token) {
             throw new Error(res.message || SESSION_EXPIRED_MESSAGE);
           }
@@ -108,7 +108,7 @@ api.interceptors.response.use(
           }
           return res.data.token;
         })
-        .catch((refreshError) => {
+        .catch((refreshError: any) => {
           redirectToLoginAfterSessionExpiration();
           throw refreshError;
         })
