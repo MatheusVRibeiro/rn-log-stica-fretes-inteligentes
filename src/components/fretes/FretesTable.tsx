@@ -1,4 +1,5 @@
 import { Dispatch, SetStateAction } from "react";
+import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/shared/DataTable";
 import { formatFreteCodigo, toNumber } from "@/utils/formatters";
 import {
@@ -35,6 +36,8 @@ interface Frete {
     resultado: number;
     ticket?: string;
     numeroNotaFiscal?: string;
+    pagamentoId?: string | null;
+    isPago?: boolean;
 }
 
 interface FretesTableProps {
@@ -66,7 +69,10 @@ export function FretesTable({
                 emptyMessage="Nenhum frete encontrado com os filtros aplicados"
                 mobileCardTitle={(item) => (
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-bold text-primary">{formatFreteCodigo(item)}</span>
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold text-primary">{formatFreteCodigo(item)}</span>
+                            {item.isPago && <span className="text-xs"><Badge variant="success">Pago</Badge></span>}
+                        </div>
                         <span className="text-xs text-muted-foreground">{item.dataFrete}</span>
                     </div>
                 )}

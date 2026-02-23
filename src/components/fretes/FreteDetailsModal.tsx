@@ -7,6 +7,12 @@ import {
     Package, MapPin, Truck, ArrowRight, Info, FileText,
     DollarSign, TrendingUp, AlertCircle, Edit
 } from "lucide-react";
+import { DeleteConfirmation } from "@/components/shared/DeleteConfirmation";
+
+import { useDeletarFrete } from "@/hooks/queries/useFretes";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import pagamentosService from "@/services/pagamentos";
 
 import { cn } from "@/lib/utils";
 import { parseBRDateToLocalDate, toNumber, isCustoFromFrete, formatDateBRDisplay, formatFreteCodigo } from "@/utils/formatters";
@@ -25,6 +31,48 @@ export function FreteDetailsModal({
     custosState,
     handleOpenEditModal
 }: FreteDetailsModalProps) {
+
+    const deleteMutation = useDeletarFrete();
+    const queryClient = useQueryClient();
+
+    const handleDelete = async () => {
+        if (!selectedFrete) return;
+
+        // Check cached pagamentos first, fallback to API call
+        const cached = queryClient.getQueryData({ queryKey: ["pagamentos"] }) as any;
+        let pagamentos: any[] = cached?.data || null;
+
+        if (!pagamentos) {
+            const res = await pagamentosService.listarPagamentos({ limit: 1000 }).catch(() => null);
+            pagamentos = res?.data || [];
+        }
+
+        const freteIdStr = String(selectedFrete.id);
+        const hasPayment = pagamentos.some((p: any) => {
+            const fretes_incluidos: string | null | undefined = p.fretes_incluidos;
+            if (!fretes_incluidos) return false;
+            return fretes_incluidos
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .includes(freteIdStr);
+        });
+
+        if (hasPayment) {
+            toast.error("Não é possível excluir: frete já foi pago");
+            return;
+        }
+
+        deleteMutation.mutate(String(selectedFrete.id), {
+            onSuccess: () => {
+                toast.success("Frete excluído com sucesso");
+                setSelectedFrete(null);
+            },
+            onError: (err: any) => {
+                toast.error(err?.message || "Erro ao excluir frete");
+            },
+        });
+    };
 
     if (!selectedFrete) return null;
 
@@ -49,6 +97,15 @@ export function FreteDetailsModal({
                                 <Edit className="h-4 w-4" />
                                 Editar
                             </Button>
+                            <DeleteConfirmation
+                                itemName={formatFreteCodigo(selectedFrete)}
+                                onConfirm={handleDelete}
+                                trigger={
+                                    <Button variant="destructive" size="sm" className="gap-2">
+                                        Excluir
+                                    </Button>
+                                }
+                            />
                         </div>
                     </div>
                 </DialogHeader>

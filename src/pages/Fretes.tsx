@@ -27,6 +27,7 @@ import * as fretesService from "@/services/fretes";
 import * as caminhoesService from "@/services/caminhoes";
 import fazendasService from "@/services/fazendas";
 import custosService from "@/services/custos";
+import pagamentosService from "@/services/pagamentos";
 import type { ApiResponse, Custo as CustoApi, Frete as FreteAPI } from "@/types";
 import {
   Select,
@@ -81,6 +82,8 @@ import { useFretes } from "@/hooks/queries/useFretes";
 interface Frete {
   id: string;
   codigoFrete?: string;
+  pagamentoId?: string | null;
+  isPago?: boolean;
   origem: string;
   destino: string;
   motorista: string;
@@ -278,6 +281,30 @@ export default function Fretes() {
     ticket: "",
     numeroNotaFiscal: "",
   });
+
+  // Helper: parse various date formats to timestamp for sorting (dd/MM/yyyy, ISO)
+  const dateToTimestamp = (value?: string) => {
+    if (!value) return 0;
+    if (value.includes("/")) {
+      const [dia, mes, ano] = value.split("/");
+      const d = new Date(Number(ano), Number(mes) - 1, Number(dia));
+      return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const parsed = parseLocalInputDate(value);
+      return parsed ? parsed.getTime() : 0;
+    }
+    const dt = new Date(value);
+    return Number.isNaN(dt.getTime()) ? 0 : dt.getTime();
+  };
+
+  const codigoNumero = (codigo?: string | undefined) => {
+    if (!codigo) return -1;
+    const m = codigo.match(/(\d+)\s*$/);
+    if (m) return Number(m[1]);
+    const digits = codigo.replace(/\D+/g, "");
+    return digits ? Number(digits) : -1;
+  };
   type FormErrors = {
     fazendaId: string;
     destino: string;
@@ -354,8 +381,19 @@ export default function Fretes() {
     },
   });
 
-  // Carregar Fretes
-  const { data: fretesResponse, isLoading: isLoadingFretes } = useFretes();
+  // Carregar fretes paginados (server-side) para não sobrecarregar a API
+  const { data: fretesResponse, isLoading: isLoadingFretes } = useFretes({ page: currentPage, limit: itemsPerPage });
+  // Carregar todos os fretes em background apenas para somatórios e lista de períodos
+  const { data: fretesAllResponse } = useFretes({ fetchAll: true });
+
+  // Carregar pagamentos (usado para marcar fretes pagos)
+  const { data: pagamentosResponse } = useQuery<ApiResponse<any[]>>({
+    queryKey: ["pagamentos"],
+    queryFn: () => pagamentosService.listarPagamentos(),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const pagamentosApi: any[] = pagamentosResponse?.data || [];
 
   // Carregar Custos (para detalhamento no modal de visualização)
   const { data: custosResponse } = useQuery<ApiResponse<CustoApi[]>>({
@@ -372,7 +410,8 @@ export default function Fretes() {
 
   const fretesAPI: Frete[] = useMemo(
     () =>
-      (fretesResponse?.data ?? []).map((freteAPI) => {
+      (fretesResponse?.data ?? [])
+        .map((freteAPI) => {
         const custosVindosDosLancamentos = getTotalCustosByFreteRef(
           freteAPI.id,
           freteAPI.codigo_frete
@@ -383,9 +422,25 @@ export default function Fretes() {
             : toNumber(freteAPI.custos);
         const receita = toNumber(freteAPI.receita);
 
+        const freteIdStr = String(freteAPI.id);
+        const isPago = pagamentosApi.some((p) => {
+          const fretes_incluidos: string | null | undefined = p.fretes_incluidos;
+          if (!fretes_incluidos) return false;
+          return (
+            p.status === "pago" &&
+            fretes_incluidos
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .includes(freteIdStr)
+          );
+        });
+
         return {
           id: freteAPI.id,
           codigoFrete: freteAPI.codigo_frete || undefined,
+          pagamentoId: freteAPI.pagamento_id || undefined,
+          isPago,
           origem: freteAPI.origem,
           destino: freteAPI.destino,
           motorista: freteAPI.proprietario_nome || freteAPI.motorista_nome,
@@ -406,8 +461,82 @@ export default function Fretes() {
           resultado: receita - custos,
           ticket: freteAPI.ticket || undefined,
         };
-      }),
-    [fretesResponse?.data, custosState]
+        })
+        .sort((a, b) => {
+          const dt = dateToTimestamp(b.dataFrete) - dateToTimestamp(a.dataFrete);
+          if (dt !== 0) return dt;
+          const na = codigoNumero(a.codigoFrete);
+          const nb = codigoNumero(b.codigoFrete);
+          if (nb !== na) return nb - na;
+          return String(b.id).localeCompare(String(a.id));
+        }),
+    [fretesResponse?.data, custosState, pagamentosResponse?.data]
+  );
+
+  // All fretes (full dataset) used for totals/periods
+  const fretesAllAPI: Frete[] = useMemo(
+    () =>
+      (fretesAllResponse?.data ?? [])
+        .map((freteAPI) => {
+        const custosVindosDosLancamentos = getTotalCustosByFreteRef(
+          freteAPI.id,
+          freteAPI.codigo_frete
+        );
+        const custos =
+          custosVindosDosLancamentos > 0
+            ? custosVindosDosLancamentos
+            : toNumber(freteAPI.custos);
+        const receita = toNumber(freteAPI.receita);
+
+        const freteIdStr = String(freteAPI.id);
+        const isPago = pagamentosApi.some((p) => {
+          const fretes_incluidos: string | null | undefined = p.fretes_incluidos;
+          if (!fretes_incluidos) return false;
+          return (
+            p.status === "pago" &&
+            fretes_incluidos
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .includes(freteIdStr)
+          );
+        });
+
+        return {
+          id: freteAPI.id,
+          codigoFrete: freteAPI.codigo_frete || undefined,
+          pagamentoId: freteAPI.pagamento_id || undefined,
+          isPago,
+          origem: freteAPI.origem,
+          destino: freteAPI.destino,
+          motorista: freteAPI.proprietario_nome || freteAPI.motorista_nome,
+          motoristaId: freteAPI.proprietario_id || freteAPI.motorista_id,
+          caminhao: freteAPI.caminhao_placa,
+          caminhaoId: freteAPI.caminhao_id,
+          mercadoria: freteAPI.mercadoria,
+          mercadoriaId: freteAPI.mercadoria_id || freteAPI.mercadoria,
+          fazendaId: freteAPI.fazenda_id || undefined,
+          fazendaNome: freteAPI.fazenda_nome || undefined,
+          variedade: freteAPI.variedade || undefined,
+          dataFrete: freteAPI.data_frete,
+          quantidadeSacas: freteAPI.quantidade_sacas,
+          toneladas: freteAPI.toneladas,
+          valorPorTonelada: freteAPI.valor_por_tonelada,
+          receita,
+          custos,
+          resultado: receita - custos,
+          ticket: freteAPI.ticket || undefined,
+        };
+        })
+        .sort((a, b) => {
+          const dt = dateToTimestamp(b.dataFrete) - dateToTimestamp(a.dataFrete);
+          if (dt !== 0) return dt;
+          const na = codigoNumero(a.codigoFrete);
+          const nb = codigoNumero(b.codigoFrete);
+          if (nb !== na) return nb - na;
+          return String(b.id).localeCompare(String(a.id));
+        }),
+    [fretesAllResponse?.data, custosState, pagamentosResponse?.data]
   );
 
   const motoristasData = Array.isArray(motoristasResponse?.data) ? motoristasResponse.data : [];
@@ -423,14 +552,15 @@ export default function Fretes() {
   })();
   const caminhoesState = Array.isArray(caminhoesData) ? caminhoesData : [];
   const fretesState = Array.isArray(fretesAPI) ? fretesAPI : [];
+  const fretesAllState = Array.isArray(fretesAllAPI) ? fretesAllAPI : [];
   const editRouteHandledRef = useRef<string | null>(null);
 
   // Validar se período selecionado existe nos dados
   useEffect(() => {
-    if (!Array.isArray(fretesState) || fretesState.length === 0) return;
+    if (!Array.isArray(fretesAllState) || fretesAllState.length === 0) return;
 
     // Extrair períodos disponíveis
-    const periodos = fretesState.map((f) => {
+    const periodos = fretesAllState.map((f) => {
       const freteDate = parseDateBR(f.dataFrete);
       const anoFrete = freteDate.getFullYear();
       const mesFrete = freteDate.getMonth() + 1;
@@ -1068,12 +1198,12 @@ export default function Fretes() {
 
     yPosition += 12;
 
-    // Cálculos
-    const totalReceita = filteredData.reduce((acc, f) => acc + toNumber(f.receita), 0);
-    const totalCustos = filteredData.reduce((acc, f) => acc + toNumber(f.custos), 0);
+    // Cálculos (baseados no conjunto completo filtrado)
+    const totalReceita = filteredAllData.reduce((acc, f) => acc + toNumber(f.receita), 0);
+    const totalCustos = filteredAllData.reduce((acc, f) => acc + toNumber(f.custos), 0);
     const totalLucro = totalReceita - totalCustos;
-    const totalToneladas = filteredData.reduce((acc, f) => acc + toNumber(f.toneladas), 0);
-    const qtdFretes = filteredData.length;
+    const totalToneladas = filteredAllData.reduce((acc, f) => acc + toNumber(f.toneladas), 0);
+    const qtdFretes = filteredAllData.length;
 
     doc.setTextColor(0, 0, 0);
 
@@ -1174,7 +1304,7 @@ export default function Fretes() {
     yPosition += 12;
 
     // Tabela detalhada - USANDO FILTROS APLICADOS
-    const tableData = filteredData.map((f) => [
+    const tableData = filteredAllData.map((f) => [
       f.id,
       `${f.origem} para ${f.destino}`,
       f.motorista,
@@ -1241,7 +1371,7 @@ export default function Fretes() {
     toast.success(`PDF "${nomeArquivo}" gerado com sucesso!`, { duration: 4000 });
   };
 
-  // Filtrar fretes por período selecionado
+  // Filtrar fretes por período selecionado (apenas dados da página atual)
   const fretesFiltradasPorPeriodo = useMemo(() => {
     if (!Array.isArray(fretesState)) return [];
     return fretesState.filter((f) => {
@@ -1271,12 +1401,38 @@ export default function Fretes() {
     });
   }, [selectedPeriodo, fretesState, tipoVisualizacao]);
 
+  // Filtrar todos os fretes por período selecionado (full dataset) — usado para somatórios e opções
+  const fretesFiltradasPorPeriodoAll = useMemo(() => {
+    if (!Array.isArray(fretesAllState)) return [];
+    return fretesAllState.filter((f) => {
+      const freteDate = parseDateBR(f.dataFrete);
+      const anoFrete = freteDate.getFullYear();
+      const mesFrete = freteDate.getMonth() + 1; // 1-12
+
+      if (tipoVisualizacao === "mensal") {
+        const periodoItem = `${anoFrete}-${String(mesFrete).padStart(2, "0")}`;
+        return periodoItem === selectedPeriodo;
+      } else if (tipoVisualizacao === "trimestral") {
+        const trimestreFrete = Math.ceil(mesFrete / 3);
+        const periodoItem = `${anoFrete}-T${trimestreFrete}`;
+        return periodoItem === selectedPeriodo;
+      } else if (tipoVisualizacao === "semestral") {
+        const semestreFrete = mesFrete <= 6 ? 1 : 2;
+        const periodoItem = `${anoFrete}-S${semestreFrete}`;
+        return periodoItem === selectedPeriodo;
+      } else if (tipoVisualizacao === "anual") {
+        return String(anoFrete) === selectedPeriodo;
+      }
+      return false;
+    });
+  }, [selectedPeriodo, fretesAllState, tipoVisualizacao]);
+
   const filteredData = fretesFiltradasPorPeriodo.filter((frete) => {
     const matchesSearch =
       frete.origem.toLowerCase().includes(search.toLowerCase()) ||
       frete.destino.toLowerCase().includes(search.toLowerCase()) ||
       frete.motorista.toLowerCase().includes(search.toLowerCase()) ||
-      frete.id.toLowerCase().includes(search.toLowerCase());
+      String(frete.id || "").toLowerCase().includes(search.toLowerCase());
     const matchesMotorista = motoristaFilter === "all" || frete.motoristaId === motoristaFilter;
     const matchesCaminhao = caminhaoFilter === "all" || frete.caminhaoId === caminhaoFilter;
     const matchesFazenda =
@@ -1295,10 +1451,68 @@ export default function Fretes() {
     return matchesSearch && matchesMotorista && matchesCaminhao && matchesFazenda && matchesPeriodo;
   });
 
-  // Lógica de paginação
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
+  // Filtrado aplicado sobre o conjunto completo (usado nos cards e export)
+  const filteredAllData = fretesFiltradasPorPeriodoAll.filter((frete) => {
+    const matchesSearch =
+      frete.origem.toLowerCase().includes(search.toLowerCase()) ||
+      frete.destino.toLowerCase().includes(search.toLowerCase()) ||
+      frete.motorista.toLowerCase().includes(search.toLowerCase()) ||
+      String(frete.id || "").toLowerCase().includes(search.toLowerCase());
+    const matchesMotorista = motoristaFilter === "all" || frete.motoristaId === motoristaFilter;
+    const matchesCaminhao = caminhaoFilter === "all" || frete.caminhaoId === caminhaoFilter;
+    const matchesFazenda =
+      fazendaFilter === "all" || normalizeFazendaNome(getFazendaNome(frete)) === fazendaFilter;
+    let matchesPeriodo = true;
+    if (dateRange?.from || dateRange?.to) {
+      const freteDate = parseDateBR(frete.dataFrete);
+      if (dateRange?.from) {
+        if (freteDate < dateRange.from) matchesPeriodo = false;
+      }
+      if (dateRange?.to) {
+        if (freteDate > dateRange.to) matchesPeriodo = false;
+      }
+    }
+
+    return matchesSearch && matchesMotorista && matchesCaminhao && matchesFazenda && matchesPeriodo;
+  });
+
+  // Lógica de paginação (server-side)
+  // Determine whether user-applied filters require client-side pagination
+  const periodoPadrao = useMemo(() => {
+    const hoje = new Date();
+    if (tipoVisualizacao === "mensal") return format(hoje, "yyyy-MM");
+    if (tipoVisualizacao === "trimestral") {
+      const trimestre = Math.ceil((hoje.getMonth() + 1) / 3);
+      return `${hoje.getFullYear()}-T${trimestre}`;
+    }
+    if (tipoVisualizacao === "semestral") {
+      const semestre = hoje.getMonth() + 1 <= 6 ? 1 : 2;
+      return `${hoje.getFullYear()}-S${semestre}`;
+    }
+    return String(hoje.getFullYear());
+  }, [tipoVisualizacao]);
+
+  const periodoFoiAlterado = selectedPeriodo !== periodoPadrao;
+
+  const isFiltering =
+    Boolean(search) ||
+    motoristaFilter !== "all" ||
+    caminhaoFilter !== "all" ||
+    fazendaFilter !== "all" ||
+    Boolean(dateRange?.from) ||
+    Boolean(dateRange?.to) ||
+    periodoFoiAlterado;
+
+  // If user is filtering, paginate client-side over the full filtered dataset to avoid mismatched pages
+  let totalPages = fretesResponse?.meta?.totalPages ?? Math.ceil(filteredData.length / itemsPerPage);
+  let paginatedData = filteredData; // default: server returns current page
+
+  if (isFiltering) {
+    const totalFiltered = filteredAllData.length;
+    totalPages = Math.max(1, Math.ceil(totalFiltered / itemsPerPage));
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    paginatedData = filteredAllData.slice(startIndex, startIndex + itemsPerPage);
+  }
 
   // Resetar para página 1 quando aplicar novos filtros
   useEffect(() => {
@@ -1307,7 +1521,7 @@ export default function Fretes() {
 
   const fazendasOptions = Array.from(
     new Set(
-      fretesFiltradasPorPeriodo
+      fretesFiltradasPorPeriodoAll
         .map((f) => normalizeFazendaNome(getFazendaNome(f)))
         .filter(Boolean)
     )
@@ -1315,9 +1529,9 @@ export default function Fretes() {
 
   // Extrair períodos disponíveis baseado nos dados reais
   const periodosDisponiveis = useMemo(() => {
-    if (!Array.isArray(fretesState)) return [];
+    if (!Array.isArray(fretesAllState)) return [];
 
-    const periodos = fretesState.map((f) => {
+    const periodos = fretesAllState.map((f) => {
       const freteDate = parseDateBR(f.dataFrete);
       const anoFrete = freteDate.getFullYear();
       const mesFrete = freteDate.getMonth() + 1; // 1-12
@@ -1377,7 +1591,14 @@ export default function Fretes() {
             <Package className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-mono font-bold text-lg text-foreground">{formatFreteCodigo(item)}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-mono font-bold text-lg text-foreground">{formatFreteCodigo(item)}</p>
+              {item.pagamentoId && (
+                <Badge variant="success" className="text-xs">
+                  Pago
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">{formatDateDisplay(item.dataFrete)}</p>
           </div>
         </div>
@@ -1623,7 +1844,7 @@ export default function Fretes() {
             <p className="text-xs md:text-base font-semibold text-muted-foreground">Fretes no período</p>
             <Package className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground/60" />
           </div>
-          <p className="text-2xl md:text-3xl font-bold">{filteredData.length}</p>
+          <p className="text-2xl md:text-3xl font-bold">{filteredAllData.length}</p>
         </Card>
         <Card className="p-3 md:p-4 bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-900">
           <div className="flex items-center justify-between mb-2">
@@ -1631,10 +1852,10 @@ export default function Fretes() {
             <Weight className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
           </div>
           <p className="text-2xl md:text-3xl font-bold text-purple-600">
-            {filteredData.reduce((acc, f) => acc + toNumber(f.toneladas), 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}t
+            {filteredAllData.reduce((acc, f) => acc + toNumber(f.toneladas), 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}t
           </p>
           <p className="text-xs md:text-sm font-medium text-purple-600/70 mt-1">
-            {filteredData.reduce((acc, f) => acc + toNumber(f.quantidadeSacas), 0).toLocaleString("pt-BR")} sacas
+            {filteredAllData.reduce((acc, f) => acc + toNumber(f.quantidadeSacas), 0).toLocaleString("pt-BR")} sacas
           </p>
         </Card>
         <Card className="p-3 md:p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900">
@@ -1643,7 +1864,7 @@ export default function Fretes() {
             <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
           </div>
           <p className="text-xl md:text-3xl font-bold text-blue-600">
-            R$ {filteredData.reduce((acc, f) => acc + toNumber(f.receita), 0).toLocaleString("pt-BR")}
+            R$ {filteredAllData.reduce((acc, f) => acc + toNumber(f.receita), 0).toLocaleString("pt-BR")}
           </p>
         </Card>
         <Card className="p-3 md:p-4 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900">
@@ -1652,7 +1873,7 @@ export default function Fretes() {
             <AlertCircle className="h-4 w-4 md:h-5 md:w-5 text-red-600" />
           </div>
           <p className="text-xl md:text-3xl font-bold text-red-600">
-            R$ {filteredData.reduce((acc, f) => acc + toNumber(f.custos), 0).toLocaleString("pt-BR")}
+            R$ {filteredAllData.reduce((acc, f) => acc + toNumber(f.custos), 0).toLocaleString("pt-BR")}
           </p>
         </Card>
         <Card className="p-3 md:p-4 bg-profit/5 border-profit/20 col-span-2 md:col-span-1">
@@ -1661,7 +1882,7 @@ export default function Fretes() {
             <TrendingUp className="h-4 w-4 md:h-5 md:w-5 text-profit" />
           </div>
           <p className="text-xl md:text-3xl font-bold text-profit">
-            R$ {filteredData.reduce((acc, f) => acc + toNumber(f.resultado), 0).toLocaleString("pt-BR")}
+            R$ {filteredAllData.reduce((acc, f) => acc + toNumber(f.resultado), 0).toLocaleString("pt-BR")}
           </p>
         </Card>
       </div>
@@ -1999,15 +2220,15 @@ export default function Fretes() {
 
       {/* Data Table & Pagination Extracted */}
       {!isLoadingFretes && fretesState.length > 0 && (
-        <FretesTable
-          columns={columns}
-          paginatedData={paginatedData}
-          filteredData={filteredData}
-          setSelectedFrete={setSelectedFrete}
-          currentPage={currentPage}
-          setCurrentPage={setCurrentPage}
-          totalPages={totalPages}
-        />
+              <FretesTable
+                columns={columns}
+                paginatedData={paginatedData}
+                filteredData={isFiltering ? filteredAllData : filteredData}
+                setSelectedFrete={setSelectedFrete}
+                currentPage={currentPage}
+                setCurrentPage={setCurrentPage}
+                totalPages={totalPages}
+              />
       )}
 
       {/* Frete Detail Modal */}

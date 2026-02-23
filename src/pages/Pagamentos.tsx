@@ -153,7 +153,7 @@ export default function Pagamentos() {
 
   const { data: fretesResponse } = useQuery<ApiResponse<Frete[]>>({
     queryKey: ["fretes"],
-    queryFn: () => fretesService.listarFretes(),
+    queryFn: () => fretesService.listarFretes({ page: 1, limit: 1000 }),
   });
 
   const { data: custosResponse } = useQuery<ApiResponse<any[]>>({
@@ -797,8 +797,17 @@ export default function Pagamentos() {
     // prefer pendentes endpoint result; fallback to full list filter
     if (!editedPagamento?.motoristaId) return [];
     if (usePendentesEndpoint && fretesPendentesData && fretesPendentesData.length > 0) {
-      return fretesPendentesData;
+      const pendentes = fretesPendentesData;
+      const pendentesIds = new Set(pendentes.map((p) => String(p.id)));
+      const fallback = fretesData.filter(
+        (f) =>
+          f.motoristaId === editedPagamento.motoristaId &&
+          (f.pagamentoId == null || String(f.pagamentoId) === "0") &&
+          !pendentesIds.has(String(f.id))
+      );
+      return uniqueById([...pendentes, ...fallback]);
     }
+
     return fretesData.filter(
       (f) =>
         f.motoristaId === editedPagamento.motoristaId &&

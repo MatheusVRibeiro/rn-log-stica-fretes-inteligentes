@@ -157,3 +157,25 @@ export async function atualizarFrete(
     return { success: false, data: null, message };
   }
 }
+
+export async function deletarFrete(id: string): Promise<ApiResponse<void>> {
+  try {
+    const res = await api.delete(`/fretes/${id}`);
+    if (res.status === 200 || res.status === 204) {
+      return { success: true, data: null, status: res.status };
+    }
+    return { success: false, data: null, message: res.data?.message || "Erro ao deletar frete", status: res.status };
+  } catch (err: unknown) {
+    let message = "Erro ao deletar frete";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
+    return { success: false, data: null, message };
+  }
+}
