@@ -139,7 +139,7 @@ export function PaymentDetailsDialog({
                                     <div className="flex items-center gap-2 mt-2">
                                         <Calendar className="h-4 w-4 text-primary" />
                                         <p className="text-sm font-medium">
-                                            {selectedPagamento.dataPagamento}
+                                            {selectedPagamento.dataFrete}
                                         </p>
                                     </div>
                                 </div>

@@ -253,6 +253,8 @@ export default function Motoristas() {
     const payload: Record<string, any> = {
       nome: (editedMotorista.nome?.trim() || "").toUpperCase(),
       telefone: apenasNumeros(editedMotorista.telefone || ""),
+      email: editedMotorista.email?.trim() || null,
+      endereco: editedMotorista.endereco?.trim() || null,
       tipo: editedMotorista.tipo,
       status: editedMotorista.status || "ativo",
       tipo_pagamento: editedMotorista.tipo_pagamento || 'pix',
@@ -261,8 +263,6 @@ export default function Motoristas() {
     if (editedMotorista.documento && editedMotorista.documento.trim() !== "") {
       const docLimpo = apenasNumeros(editedMotorista.documento);
       payload.documento = docLimpo;
-      const tipoDetectado = documentoTipo || (docLimpo.length > 11 ? 'cnpj' : 'cpf');
-      payload.documento_tipo = tipoDetectado;
     }
 
     if (payload.tipo_pagamento === 'pix') {
@@ -302,7 +302,8 @@ export default function Motoristas() {
           nome: m.nome ?? null,
           telefone,
           documento,
-          documento_tipo: m.documento ? (documento && documento.length > 11 ? 'cnpj' : 'cpf') : null,
+          email: m.email ?? null,
+          endereco: m.endereco ?? null,
           tipo: m.tipo ?? null,
           status: m.status ?? null,
           tipo_pagamento,

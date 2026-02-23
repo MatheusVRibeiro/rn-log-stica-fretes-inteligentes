@@ -44,16 +44,10 @@ import type { Caminhao, CriarCaminhaoPayload, Motorista } from "@/types";
 import { cn, formatPlaca, emptyToNull } from "@/lib/utils";
 import { sortMotoristasPorNome } from "@/lib/sortHelpers";
 import { formatarDocumento } from '@/utils/formatters';
+import { ModalSubmitFooter } from "@/components/shared/ModalSubmitFooter";
 import { RefreshingIndicator } from "@/components/shared/RefreshingIndicator";
 import { useRefreshData } from "@/hooks/useRefreshData";
 import { useShake } from "@/hooks/useShake";
-
-// Novos Componentes Frota
-import { FleetSummaryCards } from "@/components/frota/FleetSummaryCards";
-import { FleetFilters } from "@/components/frota/FleetFilters";
-import { VehicleCard } from "@/components/frota/VehicleCard";
-import { VehicleDetailsDialog } from "@/components/frota/VehicleDetailsDialog";
-import { VehicleFormModal } from "@/components/frota/VehicleFormModal";
 
 const statusConfig = {
   disponivel: { label: "Disponível", variant: "active" as const },
@@ -130,16 +124,32 @@ export default function Frota() {
   };
   const { isShaking, triggerShake } = useShake(220);
 
-  const formatPlateAsUserTypes = (value: string) => {
-    const clean = value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
-    if (clean.length > 3) {
-      return `${clean.slice(0, 3)}-${clean.slice(3, 7)}`;
+  // Plate helpers usable across handlers
+  const normalizePlate = (p?: string) => (p ? p.trim().toUpperCase() : "");
+  const stripNonAlnum = (s: string) => s.replace(/[^A-Z0-9]/gi, "");
+  const formatPlateWithDash = (p?: string) => {
+    if (!p) return "";
+    const up = normalizePlate(p);
+    if (/^[A-Z]{3}-\d{4}$/.test(up)) return up;
+    const clean = stripNonAlnum(up);
+    if (/^[A-Z]{3}\d[A-Z]\d{2}$/.test(clean)) {
+      return `${clean.slice(0, 3)}-${clean.slice(3)}`;
     }
-    return clean;
+    if (/^[A-Z]{3}\d{4}$/.test(clean)) {
+      return `${clean.slice(0, 3)}-${clean.slice(3)}`;
+    }
+    return up;
+  };
+
+  // Autoformat while typing: insert dash after 3 chars for plate-like inputs
+  const formatPlateAsUserTypes = (value: string) => {
+    const clean = stripNonAlnum(value.toUpperCase());
+    if (clean.length <= 3) return clean;
+    return `${clean.slice(0, 3)}-${clean.slice(3, 7)}`;
   };
   const isValidPlate = (p?: string) => {
     if (!p) return false;
-    const plate = p.trim().toUpperCase(); // Assuming normalizePlate is now external or inlined
+    const plate = normalizePlate(p);
     return /^[A-Z]{3}-\d{4}$/.test(plate) || /^[A-Z]{3}-?\d[A-Z]\d{2}$/.test(plate);
   };
 
@@ -587,18 +597,18 @@ export default function Frota() {
           <div className="space-y-2">
             {item.validade_seguro && (
               <div className={`flex items-center gap-2 px-2 py-1.5 rounded-md ${seguroExpired
-                ? "bg-red-100 dark:bg-red-950/40 border border-red-300 dark:border-red-800"
-                : seguroExpiring
-                  ? "bg-orange-100 dark:bg-orange-950/40 border border-orange-300 dark:border-orange-800"
-                  : "bg-muted/40"
+                  ? "bg-red-100 dark:bg-red-950/40 border border-red-300 dark:border-red-800"
+                  : seguroExpiring
+                    ? "bg-orange-100 dark:bg-orange-950/40 border border-orange-300 dark:border-orange-800"
+                    : "bg-muted/40"
                 }`}>
                 <Shield className={`h-3.5 w-3.5 flex-shrink-0 ${seguroExpired ? "text-red-600" : seguroExpiring ? "text-orange-600" : "text-muted-foreground"
                   }`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">Seguro</p>
                   <p className={`text-xs font-semibold ${seguroExpired ? "text-red-700 dark:text-red-400"
-                    : seguroExpiring ? "text-orange-700 dark:text-orange-400"
-                      : "text-foreground"
+                      : seguroExpiring ? "text-orange-700 dark:text-orange-400"
+                        : "text-foreground"
                     }`}>
                     {item.validade_seguro}
                   </p>
@@ -609,18 +619,18 @@ export default function Frota() {
             )}
             {item.validade_licenciamento && (
               <div className={`flex items-center gap-2 px-2 py-1.5 rounded-md ${licExpired
-                ? "bg-red-100 dark:bg-red-950/40 border border-red-300 dark:border-red-800"
-                : licExpiring
-                  ? "bg-orange-100 dark:bg-orange-950/40 border border-orange-300 dark:border-orange-800"
-                  : "bg-muted/40"
+                  ? "bg-red-100 dark:bg-red-950/40 border border-red-300 dark:border-red-800"
+                  : licExpiring
+                    ? "bg-orange-100 dark:bg-orange-950/40 border border-orange-300 dark:border-orange-800"
+                    : "bg-muted/40"
                 }`}>
                 <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${licExpired ? "text-red-600" : licExpiring ? "text-orange-600" : "text-muted-foreground"
                   }`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">Licenciamento</p>
                   <p className={`text-xs font-semibold ${licExpired ? "text-red-700 dark:text-red-400"
-                    : licExpiring ? "text-orange-700 dark:text-orange-400"
-                      : "text-foreground"
+                      : licExpiring ? "text-orange-700 dark:text-orange-400"
+                        : "text-foreground"
                     }`}>
                     {item.validade_licenciamento}
                   </p>
@@ -658,28 +668,28 @@ export default function Frota() {
                 <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all ${status === "critical"
-                      ? "bg-gradient-to-r from-red-400 to-red-600"
-                      : status === "warning"
-                        ? "bg-gradient-to-r from-yellow-400 to-yellow-600"
-                        : "bg-gradient-to-r from-green-400 to-green-600"
+                        ? "bg-gradient-to-r from-red-400 to-red-600"
+                        : status === "warning"
+                          ? "bg-gradient-to-r from-yellow-400 to-yellow-600"
+                          : "bg-gradient-to-r from-green-400 to-green-600"
                       }`}
                     style={{ width: `${Math.min(parseInt(percentual), 100)}%` }}
                   />
                 </div>
                 <span className={`text-xs font-bold ml-2 ${status === "critical"
-                  ? "text-red-600"
-                  : status === "warning"
-                    ? "text-yellow-600"
-                    : "text-green-600"
+                    ? "text-red-600"
+                    : status === "warning"
+                      ? "text-yellow-600"
+                      : "text-green-600"
                   }`}>
                   {percentual}%
                 </span>
               </div>
               <p className={`text-xs font-medium ${status === "critical"
-                ? "text-red-600"
-                : status === "warning"
-                  ? "text-yellow-600"
-                  : "text-green-600"
+                  ? "text-red-600"
+                  : status === "warning"
+                    ? "text-yellow-600"
+                    : "text-green-600"
                 }`}>
                 {status === "critical" ? "⚠️ CRÍTICO" : status === "warning" ? "⚠️ Atenção" : "✓ OK"} - {kmRestante} km restantes
               </p>
@@ -805,155 +815,1090 @@ export default function Frota() {
       <RefreshingIndicator isRefreshing={isRefreshing} />
       <PageHeader
         title="Frota de Veículos"
-        description="Gestão técnica e operacional da frota Contelli"
+        description="Visualização simplificada da frota operacional"
         actions={
-          <Button onClick={handleOpenNewModal} className="font-bold shadow-lg shadow-primary/20">
+          <Button onClick={handleOpenNewModal}>
             <Plus className="h-4 w-4 mr-2" />
             Novo Caminhão
           </Button>
         }
       />
 
-      {/* Estatísticas Superiores */}
-      <FleetSummaryCards
-        caminhoes={caminhoes}
-        getFleetType={getFleetType}
-        emOperacaoCount={emOperacaoCount}
-      />
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-4 gap-4 mb-6">
+        <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/40 dark:to-green-900/20 border-green-200 dark:border-green-800">
+          <div className="flex items-center gap-2.5">
+            <div className="h-10 w-10 rounded-lg bg-green-600 flex items-center justify-center">
+              <Truck className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total de Veículos</p>
+              <p className="text-xl font-bold text-green-700 dark:text-green-400">{caminhoes.length}</p>
+            </div>
+          </div>
+        </Card>
 
-      {/* Barra de Filtros */}
-      <FleetFilters
-        search={search}
-        setSearch={setSearch}
-        fleetFilter={fleetFilter}
-        setFleetFilter={setFleetFilter}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-      />
+        <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20 border-blue-200 dark:border-blue-800">
+          <div className="flex items-center gap-2.5">
+            <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center">
+              <Truck className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Frota Própria</p>
+              <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
+                {caminhoes.filter(c => getFleetType(c) === "PROPRIO").length}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4 bg-gradient-to-br from-slate-50 to-slate-100/60 dark:from-slate-900/50 dark:to-slate-800/30 border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2.5">
+            <div className="h-10 w-10 rounded-lg bg-slate-600 flex items-center justify-center">
+              <Truck className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Terceirizados</p>
+              <p className="text-xl font-bold text-slate-700 dark:text-slate-300">
+                {caminhoes.filter(c => getFleetType(c) === "TERCEIRO").length}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4 bg-gradient-to-br from-red-50 to-red-100/50 dark:from-red-950/40 dark:to-red-900/20 border-red-200 dark:border-red-800">
+          <div className="flex items-center gap-2.5">
+            <div className="h-10 w-10 rounded-lg bg-red-600 flex items-center justify-center">
+              <AlertCircle className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Em Operação</p>
+              <p className="text-xl font-bold text-red-700 dark:text-red-400">
+                {emOperacaoCount}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+      </div>
+
+      <FilterBar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Buscar por placa, modelo ou proprietário..."
+      >
+        <div className="inline-flex items-center rounded-md border bg-muted/30 p-1 mr-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={fleetFilter === "all" ? "default" : "ghost"}
+            className="h-8 px-3 text-xs"
+            onClick={() => setFleetFilter("all")}
+          >
+            Todos
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={fleetFilter === "proprio" ? "default" : "ghost"}
+            className="h-8 px-3 text-xs"
+            onClick={() => setFleetFilter("proprio")}
+          >
+            Própria
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={fleetFilter === "terceiro" ? "default" : "ghost"}
+            className="h-8 px-3 text-xs"
+            onClick={() => setFleetFilter("terceiro")}
+          >
+            Terceirizada
+          </Button>
+        </div>
+
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="disponivel">Disponível</SelectItem>
+            <SelectItem value="em_viagem">Em Viagem</SelectItem>
+            <SelectItem value="em_manutencao">Em Manutenção</SelectItem>
+            <SelectItem value="inativo">Inativo</SelectItem>
+          </SelectContent>
+        </Select>
+      </FilterBar>
 
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-muted/20 rounded-2xl border border-dashed border-muted-foreground/20">
-          <div className="relative">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-            <Truck className="h-5 w-5 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center space-y-3">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+            <p className="text-sm text-muted-foreground">Carregando frota...</p>
           </div>
-          <p className="mt-4 text-sm font-bold text-muted-foreground uppercase tracking-widest">Sincronizando Frota...</p>
         </div>
       ) : (
-        <div className="space-y-8">
-          {paginatedData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 bg-muted/10 rounded-2xl border border-dashed">
-              <div className="p-4 rounded-full bg-muted mb-4 text-muted-foreground/50">
-                <Truck className="h-10 w-10" />
-              </div>
-              <p className="text-lg font-bold text-muted-foreground">Nenhum veículo encontrado</p>
-              <p className="text-sm text-muted-foreground/60">Tente ajustar seus filtros de busca ou categoria.</p>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {paginatedData.map((item) => (
-                  <VehicleCard
-                    key={item.id}
-                    item={item}
-                    motorista={motoristasDisponiveis.find(m => m.id === item.motorista_fixo_id)}
-                    isProprio={getFleetType(item) === "PROPRIO"}
-                    statusConfig={statusConfig}
-                    formatVehicleCategory={formatVehicleCategory}
-                    onClick={setSelectedCaminhao}
-                  />
-                ))}
+        <>
+          <div className="space-y-6">
+            <div className="rounded-xl border bg-card p-4 md:p-5">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4">
+                <Badge className="text-xs md:text-sm px-2.5 py-1">Frota Própria: {fleetSummary.proprio}</Badge>
+                <Badge variant="outline" className="text-xs md:text-sm px-2.5 py-1">Terceirizados: {fleetSummary.terceiro}</Badge>
+                <Badge variant="secondary" className="text-xs md:text-sm px-2.5 py-1">Exibindo: {paginatedData.length}</Badge>
               </div>
 
-              {/* Paginação */}
-              {totalPages > 1 && (
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-6 border-t font-medium">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider font-black">
-                    Página {currentPage} de {totalPages} • {orderedData.length} unidades
-                  </div>
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          href="#"
-                          onClick={(e) => {
+              {paginatedData.length === 0 ? (
+                <div className="rounded-lg border border-dashed bg-muted/30 p-8 text-center">
+                  <p className="text-sm text-muted-foreground">Nenhum caminhão encontrado</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {paginatedData.map((item) => {
+                    const motorista = motoristasDisponiveis.find((m) => m.id === item.motorista_fixo_id);
+                    const isProprio = getFleetType(item) === "PROPRIO";
+                    return (
+                      <Card
+                        key={item.id}
+                        className={`p-5 rounded-xl border bg-gradient-to-br from-card to-muted/30 hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${isProprio ? "border-l-4 border-l-primary/60" : "border-l-4 border-l-foreground/20"
+                          }`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedCaminhao(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            setCurrentPage(Math.max(1, currentPage - 1));
-                          }}
-                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "font-bold uppercase text-[10px] tracking-widest"}
-                        />
-                      </PaginationItem>
+                            setSelectedCaminhao(item);
+                          }
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${isProprio ? "bg-primary/10" : "bg-muted/60"}`}>
+                              <Truck className={`h-4 w-4 ${isProprio ? "text-primary" : "text-foreground/70"}`} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-base tracking-wide">{item.placa}</p>
+                              <p className="text-xs text-muted-foreground truncate">{item.modelo}</p>
+                            </div>
+                          </div>
+                          <Badge variant={isProprio ? "default" : "outline"} className="text-[11px] px-2.5 py-1">
+                            {isProprio ? "Frota Própria" : "Terceirizado"}
+                          </Badge>
+                        </div>
 
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                        const isCurrentPage = page === currentPage;
-                        const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Badge variant={statusConfig[item.status].variant} className="text-[11px] px-2.5 py-1">
+                            {statusConfig[item.status].label}
+                          </Badge>
+                          <span className="inline-flex items-center rounded-md border bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-foreground">
+                            {formatVehicleCategory(item.tipo_veiculo)}
+                          </span>
+                          <span className="inline-flex items-center rounded-md border bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+                            {item.capacidade_toneladas}
+                          </span>
+                        </div>
 
-                        if (!isVisible) return null;
+                        <div className="mt-3 rounded-md border bg-muted/30 px-2.5 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Proprietário / Transportadora</p>
+                          <p className="text-sm font-semibold leading-tight text-foreground truncate">
+                            {motorista?.nome || "Sem proprietário definido"}
+                          </p>
+                        </div>
 
-                        return (
-                          <PaginationItem key={page}>
-                            <PaginationLink
-                              href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                setCurrentPage(page);
-                              }}
-                              isActive={isCurrentPage}
-                              className="font-black"
-                            >
-                              {page}
-                            </PaginationLink>
-                          </PaginationItem>
-                        );
-                      })}
-
-                      <PaginationItem>
-                        <PaginationNext
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setCurrentPage(Math.min(totalPages, currentPage + 1));
-                          }}
-                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : "font-bold uppercase text-[10px] tracking-widest"}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
+                        <div className="mt-3 flex items-center justify-end text-[10px] text-muted-foreground">
+                          <span>{isProprio ? "Operação própria" : "Operação terceirizada"}</span>
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
-            </>
+            </div>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex justify-center">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage(Math.max(1, currentPage - 1));
+                      }}
+                      className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                    />
+                  </PaginationItem>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    const isCurrentPage = page === currentPage;
+                    const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
+
+                    if (!isVisible) {
+                      return null;
+                    }
+
+                    if (page === 2 && currentPage > 3) {
+                      return (
+                        <PaginationItem key="ellipsis-start">
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      );
+                    }
+
+                    if (page === totalPages - 1 && currentPage < totalPages - 2) {
+                      return (
+                        <PaginationItem key="ellipsis-end">
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      );
+                    }
+
+                    return (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setCurrentPage(page);
+                          }}
+                          isActive={isCurrentPage}
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    );
+                  })}
+
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage(Math.min(totalPages, currentPage + 1));
+                      }}
+                      className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+              <div className="text-xs text-muted-foreground ml-4 flex items-center">
+                Página {currentPage} de {totalPages} • {orderedData.length} registros
+              </div>
+            </div>
           )}
-        </div>
+        </>
       )}
 
-      {/* Diálogos de Detalhes e Formulário */}
-      <VehicleDetailsDialog
-        selectedCaminhao={selectedCaminhao}
-        setSelectedCaminhao={setSelectedCaminhao}
-        statusConfig={statusConfig}
-        motoristasDisponiveis={motoristasDisponiveis}
-        onEdit={handleOpenEditModal}
-        isShaking={isShaking}
-      />
+      {/* Details Modal */}
+      <Dialog open={!!selectedCaminhao && !isEditing} onOpenChange={() => setSelectedCaminhao(null)}>
+        <DialogContent className={`max-w-3xl ${isShaking ? "animate-shake" : ""}`}>
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>Detalhes do Caminhão</DialogTitle>
+                <DialogDescription>Informações completas sobre o veículo</DialogDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (selectedCaminhao) {
+                    handleOpenEditModal(selectedCaminhao);
+                    setSelectedCaminhao(null);
+                  }
+                }}
+                className="gap-2"
+              >
+                <Edit className="h-4 w-4" />
+                Editar
+              </Button>
+            </div>
+          </DialogHeader>
+          <div className="max-h-[calc(90vh-200px)] overflow-y-auto px-1">
+            {selectedCaminhao && (
+              <div className="space-y-6">
+                {/* Header */}
+                <Card className="p-4 bg-gradient-to-br from-primary/5 to-transparent">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Truck className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold mb-1 tracking-wide">{selectedCaminhao.placa}</p>
+                        <p className="text-base font-semibold mb-1.5">{selectedCaminhao.modelo}</p>
+                        <Badge variant={statusConfig[selectedCaminhao.status].variant} className="text-xs">
+                          {statusConfig[selectedCaminhao.status].label}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
 
-      <VehicleFormModal
-        isModalOpen={isModalOpen}
-        setIsModalOpen={setIsModalOpen}
-        isSaving={isSaving}
-        isEditing={isEditing}
-        editedCaminhao={editedCaminhao}
-        setEditedCaminhao={setEditedCaminhao}
-        formErrors={formErrors}
-        clearFormError={clearFormError}
-        handleSave={handleSave}
-        motoristasDisponiveis={motoristasDisponiveis}
-        transportadoraContelli={transportadoraContelli}
-        autoFilledFields={autoFilledFields}
-        setAutoFilledFields={setAutoFilledFields}
-        formatPlateAsUserTypes={formatPlateAsUserTypes}
-        resetFormErrors={resetFormErrors}
-        isShaking={isShaking}
-      />
+                {/* Specs */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <Card className="p-3 border-l-4 border-l-blue-500">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <CalendarDays className="h-3.5 w-3.5 text-blue-600" />
+                      <p className="text-xs text-muted-foreground">Ano de Fabricação</p>
+                    </div>
+                    <p className="text-lg font-bold text-blue-600">{selectedCaminhao.ano_fabricacao}</p>
+                  </Card>
+
+                  <Card className="p-3 border-l-4 border-l-green-500">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Weight className="h-3.5 w-3.5 text-green-600" />
+                      <p className="text-xs text-muted-foreground">Capacidade</p>
+                    </div>
+                    <p className="text-lg font-bold text-green-600">{selectedCaminhao.capacidade_toneladas} ton</p>
+                  </Card>
+
+                  <Card className="p-3 border-l-4 border-l-purple-500">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Gauge className="h-3.5 w-3.5 text-purple-600" />
+                      <p className="text-xs text-muted-foreground">KM Rodados</p>
+                    </div>
+                    <p className="text-lg font-bold text-purple-600">
+                      {selectedCaminhao.km_atual.toLocaleString("pt-BR")}
+                    </p>
+                  </Card>
+                </div>
+
+                <Separator />
+
+                {/* Maintenance */}
+                {selectedCaminhao.proxima_manutencao_km && (() => {
+                  const status = getMaintenanceStatus(selectedCaminhao.km_atual, selectedCaminhao.proxima_manutencao_km);
+                  const percentual = ((selectedCaminhao.km_atual / selectedCaminhao.proxima_manutencao_km) * 100).toFixed(0);
+                  return (
+                    <div>
+                      <h4 className="font-semibold mb-4 flex items-center gap-2">
+                        <Wrench className="h-4 w-4" />
+                        Status de Manutenção
+                      </h4>
+                      <div className="space-y-4">
+                        <Card className="p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <p className="text-sm text-muted-foreground">Última Manutenção</p>
+                              <p className="font-semibold">{selectedCaminhao.ultima_manutencao_data || "N/A"}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-muted-foreground">Próxima em</p>
+                              <p className="font-semibold">{selectedCaminhao.proxima_manutencao_km?.toLocaleString("pt-BR")} km</p>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium">Progressão</span>
+                              <span className="text-sm font-bold">{percentual}%</span>
+                            </div>
+                            <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${status === "critical"
+                                    ? "bg-red-500"
+                                    : status === "warning"
+                                      ? "bg-yellow-500"
+                                      : "bg-green-500"
+                                  }`}
+                                style={{ width: `${Math.min(parseInt(percentual), 100)}%` }}
+                              />
+                            </div>
+                            {status === "critical" && (
+                              <div className="flex items-center gap-2 text-red-600 text-xs font-semibold mt-2">
+                                <AlertCircle className="h-4 w-4" />
+                                Manutenção crítica - Agende imediatamente!
+                              </div>
+                            )}
+                          </div>
+                        </Card>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {selectedCaminhao.motorista_fixo_id && (() => {
+                  const motorista = motoristasDisponiveis.find(m => m.id === selectedCaminhao.motorista_fixo_id);
+                  return motorista ? (
+                    <>
+                      <Separator />
+                      <Card className="p-4 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900">
+                        <p className="text-sm text-muted-foreground mb-2">Proprietário / Transportadora</p>
+                        <div className="space-y-2">
+                          <p className="font-semibold text-lg text-blue-700 dark:text-blue-300">{motorista.nome}</p>
+                          <div className="flex items-center gap-4 text-sm">
+                            <span className="text-muted-foreground">Documento: {formatarDocumento(motorista.documento)}</span>
+                            <Badge variant={motorista.tipo === "proprio" ? "default" : "outline"}>
+                              {motorista.tipo === "proprio" ? "Próprio" : "Terceirizado"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">📞 {motorista.telefone}</p>
+                        </div>
+                      </Card>
+                    </>
+                  ) : null;
+                })()}
+
+                <Separator />
+
+                {/* Documentação e Fiscal */}
+                <div>
+                  <h4 className="font-semibold mb-4 flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Documentação e Fiscal
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedCaminhao.renavam && (
+                      <Card className="p-4 bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-1">RENAVAM do Cavalo</p>
+                        <p className="font-mono font-semibold text-foreground">{selectedCaminhao.renavam}</p>
+                      </Card>
+                    )}
+                    {selectedCaminhao.placa_carreta && selectedCaminhao.chassi && (
+                      <Card className="p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+                        <p className="text-xs text-muted-foreground mb-1">Chassi</p>
+                        <p className="font-mono font-semibold text-blue-700 dark:text-blue-300">{selectedCaminhao.chassi}</p>
+                      </Card>
+                    )}
+                    {selectedCaminhao.chassi && !selectedCaminhao.placa_carreta && (
+                      <Card className="p-4 bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-1">Chassi</p>
+                        <p className="font-mono font-semibold text-foreground">{selectedCaminhao.chassi}</p>
+                      </Card>
+                    )}
+                    {selectedCaminhao.registro_antt && (
+                      <Card className="p-4 bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-1">Registro ANTT</p>
+                        <p className="font-mono font-semibold text-foreground">{selectedCaminhao.registro_antt}</p>
+                      </Card>
+                    )}
+                    {selectedCaminhao.proprietario_tipo && (
+                      <Card className="p-4 bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-1">Tipo de Proprietário</p>
+                        <Badge variant="outline" className="font-semibold">
+                          {selectedCaminhao.proprietario_tipo}
+                        </Badge>
+                      </Card>
+                    )}
+                  </div>
+
+                  {/* Validades */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    {selectedCaminhao.validade_seguro && (
+                      <Card className="p-4 border-l-4 border-l-orange-500">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Shield className="h-4 w-4 text-orange-600" />
+                          <p className="text-sm text-muted-foreground">Validade do Seguro</p>
+                        </div>
+                        <p className="text-lg font-bold text-orange-600">{selectedCaminhao.validade_seguro}</p>
+                      </Card>
+                    )}
+                    {selectedCaminhao.validade_licenciamento && (
+                      <Card className="p-4 border-l-4 border-l-cyan-500">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="h-4 w-4 text-cyan-600" />
+                          <p className="text-sm text-muted-foreground">Validade do Licenciamento</p>
+                        </div>
+                        <p className="text-lg font-bold text-cyan-600">{selectedCaminhao.validade_licenciamento}</p>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Especificações Técnicas */}
+                <div>
+                  <h4 className="font-semibold mb-4 flex items-center gap-2">
+                    <PackageIcon className="h-4 w-4" />
+                    Especificações Técnicas
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedCaminhao.tipo_veiculo && (
+                      <Card className="p-4 border-l-4 border-l-indigo-500">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Truck className="h-4 w-4 text-indigo-600" />
+                          <p className="text-sm text-muted-foreground">Tipo de Veículo</p>
+                        </div>
+                        <p className="text-lg font-bold text-indigo-600">{selectedCaminhao.tipo_veiculo}</p>
+                      </Card>
+                    )}
+                    {selectedCaminhao.tipo_combustivel && (
+                      <Card className="p-4 border-l-4 border-l-amber-500">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Fuel className="h-4 w-4 text-amber-600" />
+                          <p className="text-sm text-muted-foreground">Tipo de Combustível</p>
+                        </div>
+                        <p className="text-lg font-bold text-amber-600">{selectedCaminhao.tipo_combustivel}</p>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          {selectedCaminhao && (
+            <DialogFooter className="pt-4">
+              <Button variant="outline" onClick={() => setSelectedCaminhao(null)}>
+                Fechar
+              </Button>
+              <Button
+                onClick={() => {
+                  handleOpenEditModal(selectedCaminhao);
+                  setSelectedCaminhao(null);
+                }}
+                className="gap-2"
+              >
+                <Edit className="h-4 w-4" />
+                Editar Caminhão
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create/Edit Modal */}
+      <Dialog
+        open={isModalOpen}
+        onOpenChange={(open) => {
+          if (isSaving) return;
+          setIsModalOpen(open);
+          resetFormErrors();
+        }}
+      >
+        <DialogContent className={`max-w-3xl ${isShaking ? "animate-shake" : ""}`}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Truck className="h-5 w-5 text-primary" />
+              </div>
+              {isEditing ? "Editar Caminhão" : "Cadastrar Novo Caminhão"}
+            </DialogTitle>
+            <DialogDescription>
+              {isEditing ? "Atualize as informações do veículo" : "Preencha os dados do novo veículo"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 max-h-[calc(90vh-200px)] overflow-y-auto px-1">
+            {/* Seção: Identificação e Especificações Técnicas */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-1 w-1 rounded-full bg-primary" />
+                <h3 className="font-semibold text-foreground">Identificação e Especificações</h3>
+              </div>
+
+              {/* Placa e Tipo de Veículo */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div className="space-y-2">
+                  <Label htmlFor="placa" className="flex items-center gap-2">
+                    <Info className="h-4 w-4 text-primary" />
+                    Placa *
+                  </Label>
+                  <Input
+                    id="placa"
+                    placeholder="ABC-1234"
+                    maxLength={8}
+                    value={editedCaminhao.placa || ""}
+                    className={`font-semibold ${autoFilledFields.placa ? 'bg-blue-50 dark:bg-blue-900/40' : ''} ${fieldErrorClass(formErrors.placa)}`}
+                    onChange={(e) => {
+                      const value = formatPlateAsUserTypes(e.target.value);
+                      setEditedCaminhao({ ...editedCaminhao, placa: value });
+                      // limpar marcação de auto-fill quando usuário digita manualmente
+                      setAutoFilledFields({});
+                      clearFormError("placa");
+                    }}
+                    onFocus={() => clearFormError("placa")}
+                  />
+                  <FieldError message={formErrors.placa} />
+
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="tipoVeiculo" className="flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-primary" />
+                    Tipo de Veículo *
+                  </Label>
+                  <Select
+                    value={editedCaminhao.tipo_veiculo || ""}
+                    onValueChange={(value: "TRUCK" | "TOCO" | "CARRETA" | "BITREM") => {
+                      setEditedCaminhao({ ...editedCaminhao, tipo_veiculo: value });
+                      clearFormError("tipo_veiculo");
+                    }}
+                  >
+                    <SelectTrigger className={fieldErrorClass(formErrors.tipo_veiculo)}>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CARRETA">Carreta</SelectItem>
+                      <SelectItem value="TRUCK">Truck</SelectItem>
+                      <SelectItem value="TOCO">Toco</SelectItem>
+                      <SelectItem value="BITREM">Bitrem</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FieldError message={formErrors.tipo_veiculo} />
+                </div>
+              </div>
+
+              {/* Modelo e Placa da Carreta */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="modelo" className="flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-primary" />
+                    Modelo *
+                  </Label>
+                  <Input
+                    id="modelo"
+                    placeholder="Ex: Volvo FH 540"
+                    className={`uppercase ${fieldErrorClass(formErrors.modelo)}`}
+                    value={editedCaminhao.modelo || ""}
+                    onChange={(e) => {
+                      setEditedCaminhao({ ...editedCaminhao, modelo: e.target.value.toUpperCase() });
+                      clearFormError("modelo");
+                    }}
+                    onFocus={() => clearFormError("modelo")}
+                  />
+                  <FieldError message={formErrors.modelo} />
+                </div>
+
+                {editedCaminhao.tipo_veiculo && ["CARRETA", "BITREM", "TRUCK"].includes(editedCaminhao.tipo_veiculo) ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="placaCarreta" className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-blue-600" />
+                      Placa da Carreta
+                    </Label>
+                    <Input
+                      id="placaCarreta"
+                      placeholder="CRT-5678"
+                      className={`font-semibold ${fieldErrorClass(formErrors.placa_carreta)}`}
+                      maxLength={8}
+                      value={editedCaminhao.placa_carreta || ""}
+                      onChange={(e) => {
+                        const formatted = formatPlateAsUserTypes(e.target.value);
+                        setEditedCaminhao({ ...editedCaminhao, placa_carreta: formatted });
+                        clearFormError("placa_carreta");
+                      }}
+                      onFocus={() => clearFormError("placa_carreta")}
+                    />
+                    <FieldError message={formErrors.placa_carreta} />
+                  </div>
+                ) : (
+                  <div />
+                )}
+              </div>
+
+              {/* Especificações Técnicas */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="anoFabricacao" className="flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-primary" />
+                    Ano
+                  </Label>
+                  <Select
+                    value={(editedCaminhao.ano_fabricacao ? String(editedCaminhao.ano_fabricacao) : "")}
+                    onValueChange={(value) => {
+                      setEditedCaminhao({ ...editedCaminhao, ano_fabricacao: value ? parseInt(value) : undefined });
+                      clearFormError("ano_fabricacao");
+                    }}
+                  >
+                    <SelectTrigger className={fieldErrorClass(formErrors.ano_fabricacao)}>
+                      <SelectValue placeholder="Selecione o ano" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(() => {
+                        const startYear = 1970;
+                        const current = new Date().getFullYear();
+                        return Array.from({ length: current - startYear + 1 }, (_, i) => current - i).map((yr) => (
+                          <SelectItem key={yr} value={String(yr)}>{yr}</SelectItem>
+                        ));
+                      })()}
+                    </SelectContent>
+                  </Select>
+                  <FieldError message={formErrors.ano_fabricacao} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capacidadeToneladas" className="flex items-center gap-2">
+                    <Weight className="h-4 w-4 text-primary" />
+                    Capacidade
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="capacidadeToneladas"
+                      type="number"
+                      placeholder="40"
+                      min="1"
+                      value={editedCaminhao.capacidade_toneladas || ""}
+                      onChange={(e) => {
+                        setEditedCaminhao({ ...editedCaminhao, capacidade_toneladas: parseFloat(e.target.value) || 0 });
+                        clearFormError("capacidade_toneladas");
+                      }}
+                      onFocus={() => clearFormError("capacidade_toneladas")}
+                      className={fieldErrorClass(formErrors.capacidade_toneladas)}
+                    />
+                    <span className="text-sm font-semibold text-muted-foreground whitespace-nowrap">ton</span>
+                  </div>
+                  <FieldError message={formErrors.capacidade_toneladas} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="kmAtual" className="flex items-center gap-2">
+                    <Gauge className="h-4 w-4 text-primary" />
+                    KM Atual *
+                  </Label>
+                  <Input
+                    id="kmAtual"
+                    type="number"
+                    placeholder="0"
+                    min="0"
+                    value={editedCaminhao.km_atual || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, km_atual: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+
+              {/* Tipo de Combustível e Tipo de Proprietário */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tipoCombustivel" className="flex items-center gap-2">
+                    <Fuel className="h-4 w-4 text-primary" />
+                    Tipo de Combustível
+                  </Label>
+                  <Select
+                    value={editedCaminhao.tipo_combustivel || ""}
+                    onValueChange={(value: "DIESEL" | "GASOLINA" | "ETANOL" | "GNV") =>
+                      setEditedCaminhao({ ...editedCaminhao, tipo_combustivel: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o combustível" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DIESEL">Diesel</SelectItem>
+                      <SelectItem value="GASOLINA">Gasolina</SelectItem>
+                      <SelectItem value="ETANOL">Etanol</SelectItem>
+                      <SelectItem value="GNV">GNV</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="proprietarioTipo" className="flex items-center gap-2">
+                    <Info className="h-4 w-4 text-primary" />
+                    Tipo de Proprietário
+                  </Label>
+                  <Select
+                    value={editedCaminhao.proprietario_tipo || undefined}
+                    onValueChange={(value: "PROPRIO" | "TERCEIRO" | "AGREGADO") => {
+                      const isChangingFromProprio = editedCaminhao.proprietario_tipo === "PROPRIO";
+                      const shouldClearAutoOwner =
+                        value !== "PROPRIO" &&
+                        isChangingFromProprio &&
+                        Boolean(transportadoraContelli?.id) &&
+                        String(editedCaminhao.motorista_fixo_id || "") === String(transportadoraContelli?.id || "");
+
+                      setEditedCaminhao({
+                        ...editedCaminhao,
+                        proprietario_tipo: value,
+                        motorista_fixo_id:
+                          value === "PROPRIO"
+                            ? (transportadoraContelli?.id || editedCaminhao.motorista_fixo_id)
+                            : (shouldClearAutoOwner ? undefined : editedCaminhao.motorista_fixo_id),
+                      });
+                      clearFormError("proprietario_tipo");
+                    }}
+                  >
+                    <SelectTrigger className={cn(fieldErrorClass(formErrors.proprietario_tipo), autoFilledFields.proprietario_tipo ? 'bg-blue-50 dark:bg-blue-900/40' : '')}>
+                      <SelectValue placeholder="Selecione o tipo de proprietário" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PROPRIO">Próprio</SelectItem>
+                      <SelectItem value="TERCEIRO">Terceiro</SelectItem>
+                      <SelectItem value="AGREGADO">Agregado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FieldError message={formErrors.proprietario_tipo} />
+                </div>
+              </div>
+            </div>
+
+            <Separator className="my-4" />
+
+            {/* Seção: Status e Proprietário (Operacional) */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-1 w-1 rounded-full bg-primary" />
+                <h3 className="font-semibold text-foreground">Operacional</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="status" className="flex items-center gap-2">
+                    <Badge className="h-4 w-4 rounded text-xs px-1.5">Status</Badge>
+                    Status *
+                  </Label>
+                  <Select
+                    value={editedCaminhao.status || "disponivel"}
+                    onValueChange={(value: "disponivel" | "em_viagem" | "em_manutencao" | "inativo") =>
+                      setEditedCaminhao({ ...editedCaminhao, status: value })
+                    }
+                  >
+                    <SelectTrigger className="bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="disponivel">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-2 rounded-full bg-green-500" />
+                          Disponível
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="em_viagem">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-2 rounded-full bg-blue-500" />
+                          Em Viagem
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="em_manutencao">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-2 rounded-full bg-yellow-500" />
+                          Em Manutenção
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="inativo">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-2 rounded-full bg-gray-500" />
+                          Inativo
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="motoristaFixoId" className="flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-primary" />
+                    Proprietário / Transportadora
+                  </Label>
+                  <Select
+                    value={editedCaminhao.motorista_fixo_id || "___none___"}
+                    onValueChange={(value) =>
+                      setEditedCaminhao({
+                        ...editedCaminhao,
+                        motorista_fixo_id: value === "___none___" ? undefined : value
+                      })
+                    }
+                  >
+                    <SelectTrigger id="motoristaFixoId" className={autoFilledFields.motorista ? 'bg-blue-50 dark:bg-blue-900/40' : ''}>
+                      <SelectValue placeholder="Selecione o proprietário/transportadora (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="___none___">Nenhum (Sem proprietário definido)</SelectItem>
+                      {motoristasDisponiveis
+                        .filter(m => m.status === "ativo")
+                        .map((motorista) => (
+                          <SelectItem key={motorista.id} value={motorista.id}>
+                            <div className="flex items-center gap-2 text-sm">
+                              <div className="flex flex-col">
+                                <span className="font-semibold">{motorista.nome}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {motorista.tipo === "proprio" ? "Próprio" : "Terceirizado"} • {motorista.telefone}
+                                </span>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Proprietário ou transportadora responsável por este veículo</p>
+                </div>
+              </div>
+            </div>
+
+            <Separator className="my-2" />
+
+            {/* Seção: Documentação e Fiscal */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-1 w-1 rounded-full bg-primary" />
+                <h3 className="font-semibold text-foreground">Documentação e Fiscal</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="renavam" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    RENAVAM do Cavalo
+                  </Label>
+                  <Input
+                    id="renavam"
+                    placeholder="12345678901"
+                    className="font-mono"
+                    maxLength={20}
+                    value={editedCaminhao.renavam || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, renavam: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">RENAVAM do caminhão trator</p>
+                </div>
+                {editedCaminhao.tipo_veiculo && ["CARRETA", "BITREM", "TRUCK"].includes(editedCaminhao.tipo_veiculo) && (
+                  <div className="space-y-2">
+                    <Label htmlFor="placa_carreta_ref" className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-blue-600" />
+                      Placa da Carreta (Referência)
+                    </Label>
+                    <Input
+                      id="placa_carreta_ref"
+                      placeholder="DEF-5678"
+                      className={fieldErrorClass(formErrors.placa_carreta)}
+                      maxLength={8}
+                      value={editedCaminhao.placa_carreta || ""}
+                      onChange={(e) => {
+                        const formatted = formatPlateAsUserTypes(e.target.value);
+                        setEditedCaminhao({ ...editedCaminhao, placa_carreta: formatted });
+                        clearFormError("placa_carreta");
+                      }}
+                      onFocus={() => clearFormError("placa_carreta")}
+                    />
+                    <p className="text-xs text-muted-foreground">Placa do reboque/carreta se aplicável</p>
+                    <FieldError message={formErrors.placa_carreta} />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="chassi" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Chassi
+                  </Label>
+                  <Input
+                    id="chassi"
+                    placeholder="9BWHE21JX24060831"
+                    className="font-mono"
+                    maxLength={30}
+                    value={editedCaminhao.chassi || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, chassi: e.target.value.toUpperCase() })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="registroAntt" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Registro ANTT
+                  </Label>
+                  <Input
+                    id="registroAntt"
+                    placeholder="ANTT-2020-001"
+                    maxLength={20}
+                    value={editedCaminhao.registro_antt || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, registro_antt: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Validades */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="validadeSeguro" className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-orange-600" />
+                    Validade do Seguro
+                  </Label>
+                  <Input
+                    id="validadeSeguro"
+                    placeholder="DD/MM/AAAA"
+                    value={editedCaminhao.validade_seguro || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, validade_seguro: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="validadeLicenciamento" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-cyan-600" />
+                    Validade do Licenciamento
+                  </Label>
+                  <Input
+                    id="validadeLicenciamento"
+                    placeholder="DD/MM/AAAA"
+                    value={editedCaminhao.validade_licenciamento || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, validade_licenciamento: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator className="my-2" />
+
+            {/* Seção: Manutenção */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-1 w-1 rounded-full bg-primary" />
+                <h3 className="font-semibold text-foreground">Manutenção Preventiva</h3>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg p-3 mb-4">
+                <p className="text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
+                  <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  Configure o intervalo de manutenção para receber alertas quando o caminhão se aproximar do limite
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ultimaManutencaoData" className="flex items-center gap-2">
+                    <Wrench className="h-4 w-4 text-primary" />
+                    Última Manutenção *
+                  </Label>
+                  <Input
+                    id="ultimaManutencaoData"
+                    placeholder="DD/MM/AAAA"
+                    value={editedCaminhao.ultima_manutencao_data || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, ultima_manutencao_data: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="proximaManutencaoKm" className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-primary" />
+                    Próxima Manutenção (KM) *
+                  </Label>
+                  <Input
+                    id="proximaManutencaoKm"
+                    type="number"
+                    placeholder="250000"
+                    min="0"
+                    value={editedCaminhao.proxima_manutencao_km || ""}
+                    onChange={(e) => setEditedCaminhao({ ...editedCaminhao, proxima_manutencao_km: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              {editedCaminhao.km_atual !== undefined && editedCaminhao.proxima_manutencao_km !== undefined && editedCaminhao.proxima_manutencao_km > 0 && (
+                <div className="mt-3 p-3 bg-muted rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-muted-foreground">Intervalo de Manutenção</span>
+                    <span className="text-sm font-bold text-foreground">
+                      {((editedCaminhao.km_atual / editedCaminhao.proxima_manutencao_km) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted-foreground/20 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${(editedCaminhao.km_atual / editedCaminhao.proxima_manutencao_km) * 100 >= 90
+                          ? "bg-red-500"
+                          : (editedCaminhao.km_atual / editedCaminhao.proxima_manutencao_km) * 100 >= 70
+                            ? "bg-yellow-500"
+                            : "bg-green-500"
+                        }`}
+                      style={{ width: `${Math.min((editedCaminhao.km_atual / editedCaminhao.proxima_manutencao_km) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 flex flex-col sm:flex-row">
+            <ModalSubmitFooter
+              onCancel={() => {
+                setIsModalOpen(false);
+                resetFormErrors();
+              }}
+              onSubmit={handleSave}
+              isSubmitting={isSaving}
+              submitLabel={isEditing ? "Salvar Alterações" : "Cadastrar Caminhão"}
+            />
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
