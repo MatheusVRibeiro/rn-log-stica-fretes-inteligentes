@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FilterBar } from "@/components/shared/FilterBar";
-import { DataTable } from "@/components/shared/DataTable";
 import { FieldError, fieldErrorClass } from "@/components/shared/FieldError";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +20,7 @@ import {
   PaginationEllipsis,
 } from "@/components/ui/pagination";
 import { InputMascarado } from "@/components/InputMascarado";
-import { validarCPF, validarEmail, validarCNH, validarTelefone, apenasNumeros, formatarDataBrasileira, converterDataBrasileira, formatarDocumento, formatarTelefone } from "@/utils/formatters";
+import { validarCPF, validarEmail, validarCNH, validarTelefone, apenasNumeros, formatarDataBrasileira, converterDataBrasileira, formatarDocumento, formatarTelefone, formatarCodigoFrete } from "@/utils/formatters";
 import {
   Select,
   SelectContent,
@@ -34,6 +33,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -50,12 +50,14 @@ import { cn } from "@/lib/utils";
 import { sortMotoristasPorNome } from "@/lib/sortHelpers";
 import { emptyToNull, cleanPayload } from "@/lib/utils";
 import type { Motorista } from "@/types";
-import { ITEMS_PER_PAGE } from "@/lib/pagination";
 import { useCriarMotorista, useMotoristas, useAtualizarMotorista } from "@/hooks/queries/useMotoristas";
+import { useFretes } from "@/hooks/queries/useFretes";
 import { ModalSubmitFooter } from "@/components/shared/ModalSubmitFooter";
 import { RefreshingIndicator } from "@/components/shared/RefreshingIndicator";
 import { useRefreshData } from "@/hooks/useRefreshData";
 import { useShake } from "@/hooks/useShake";
+import { MotoristasCards } from "@/components/motoristas/MotoristasCards";
+import { MotoristaFormModal } from "@/components/motoristas/MotoristaFormModal";
 
 // Payload para criar motorista
 interface CriarMotoristaPayload {
@@ -91,7 +93,7 @@ const tipoMotoristaConfig = {
 };
 
 export default function Motoristas() {
-  const [documentoTipo, setDocumentoTipo] = useState<'cpf' | 'cnpj' | null>(null);
+  const [documentoTipo, setDocumentoTipo] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [tipoFilter, setTipoFilter] = useState<string>("all");
@@ -102,7 +104,7 @@ export default function Motoristas() {
   const [editedMotorista, setEditedMotorista] = useState<Partial<Motorista>>({});
 
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = ITEMS_PER_PAGE;
+  const itemsPerPage = 12;
   const [errosCampos, setErrosCampos] = useState<Record<string, string>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const { isShaking, triggerShake } = useShake(220);
@@ -112,8 +114,14 @@ export default function Motoristas() {
     isLoading: isLoadingMotoristas,
     refetch: recarregarMotoristas,
   } = useMotoristas();
+  const { data: fretesResponse } = useFretes();
 
-  const motoristasState: Motorista[] = sortMotoristasPorNome(motoristasResponse?.data || []);
+  const motoristasState: Motorista[] = useMemo(
+    () => sortMotoristasPorNome(motoristasResponse?.data || []),
+    [motoristasResponse?.data]
+  );
+  const fretesApi = fretesResponse?.data || [];
+  const editRouteHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (motoristasResponse && !motoristasResponse.success) {
@@ -131,11 +139,17 @@ export default function Motoristas() {
   const params = useParams();
   useEffect(() => {
     const idParam = params.id;
-    if (!idParam || isLoadingMotoristas || motoristasState.length === 0) return;
+    if (!idParam) {
+      editRouteHandledRef.current = null;
+      return;
+    }
+    if (isLoadingMotoristas || motoristasState.length === 0) return;
+    if (editRouteHandledRef.current === String(idParam)) return;
 
     const found = motoristasState.find((m) => String(m.id) === String(idParam));
     if (found) {
-      handleOpenEditModal(found);
+      editRouteHandledRef.current = String(idParam);
+      handleOpenEditModal(found, { skipNavigate: true });
       return;
     }
 
@@ -148,7 +162,7 @@ export default function Motoristas() {
   const handleOpenNewModal = () => {
     setEditedMotorista({
       nome: "",
-        documento: "",
+      documento: "",
       telefone: "",
       email: "",
       status: "ativo",
@@ -167,14 +181,20 @@ export default function Motoristas() {
     setOriginalMotorista(null);
   };
 
-  const handleOpenEditModal = (motorista: Motorista) => {
+  const handleOpenEditModal = (motorista: Motorista, options?: { skipNavigate?: boolean }) => {
     setEditedMotorista({
-      ...motorista
+      ...motorista,
+      telefone: motorista.telefone ? formatarTelefone(motorista.telefone) : "",
     });
     setOriginalMotorista({ ...motorista });
     setIsEditing(true);
     setIsModalOpen(true);
-    if (motorista) navigate(`/motoristas/editar/${motorista.id}`);
+    if (!options?.skipNavigate && motorista) {
+      const targetPath = `/motoristas/editar/${motorista.id}`;
+      if (location.pathname !== targetPath) {
+        navigate(targetPath);
+      }
+    }
   };
 
   const clearFilters = () => {
@@ -253,8 +273,8 @@ export default function Motoristas() {
       payload.chave_pix_tipo = (editedMotorista.chave_pix_tipo as string) || 'cpf';
       payload.chave_pix = editedMotorista.chave_pix
         ? (payload.chave_pix_tipo === 'cpf' || payload.chave_pix_tipo === 'cnpj'
-            ? apenasNumeros(editedMotorista.chave_pix)
-            : editedMotorista.chave_pix)
+          ? apenasNumeros(editedMotorista.chave_pix)
+          : editedMotorista.chave_pix)
         : null;
     } else if (payload.tipo_pagamento === 'transferencia_bancaria') {
       payload.banco = editedMotorista.banco || null;
@@ -298,7 +318,7 @@ export default function Motoristas() {
       const originalNorm = normalize(originalMotorista);
       const editedNorm = normalize(editedMotorista);
 
-        const changed: Record<string, any> = {};
+      const changed: Record<string, any> = {};
       Object.keys(editedNorm).forEach((k) => {
         const origVal = originalNorm[k as keyof typeof originalNorm];
         const editVal = editedNorm[k as keyof typeof editedNorm];
@@ -374,7 +394,7 @@ export default function Motoristas() {
   const filteredData = motoristasState.filter((motorista) => {
     const matchesSearch =
       motorista.nome.toLowerCase().includes(search.toLowerCase()) ||
-        String(motorista.documento || '').includes(search);
+      String(motorista.documento || '').includes(search);
     const matchesStatus =
       statusFilter === "all" || motorista.status === statusFilter;
     const matchesTipo =
@@ -382,10 +402,21 @@ export default function Motoristas() {
     return matchesSearch && matchesStatus && matchesTipo;
   });
 
-  // Ordenar alfabeticamente por nome (case-insensitive) antes da paginação
-  const sortedData = [...filteredData].sort((a, b) =>
-    a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
-  );
+  const isContelli = (motorista: Motorista) => {
+    const haystack = [motorista.nome, motorista.endereco, motorista.email]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes("contelli");
+  };
+
+  // Ordenar alfabeticamente por nome (case-insensitive) com Contelli no topo
+  const sortedData = [...filteredData].sort((a, b) => {
+    const aPriority = isContelli(a) ? 0 : 1;
+    const bPriority = isContelli(b) ? 0 : 1;
+    if (aPriority !== bPriority) return aPriority - bPriority;
+    return a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" });
+  });
 
   // Lógica de paginação
   const totalPages = Math.ceil(sortedData.length / itemsPerPage);
@@ -409,123 +440,44 @@ export default function Motoristas() {
   };
 
   const receitaTotal = motoristasState.reduce((acc, m) => acc + toNumber(m.receita_gerada), 0);
+  const getDriverInitials = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return "--";
+    const parts = trimmed.split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  };
+  const maskDocumento = (documento?: string | null) => {
+    if (!documento) return "—";
+    const digits = apenasNumeros(documento);
+    if (digits.length === 11) {
+      return `${digits.slice(0, 3)}.***.***-${digits.slice(-2)}`;
+    }
+    if (digits.length === 14) {
+      return `${digits.slice(0, 2)}.***.***/****-${digits.slice(-2)}`;
+    }
+    return "***";
+  };
 
-  
 
-  const columns = [
-    {
-      key: "nome",
-      header: "Motorista",
-      render: (item: Motorista) => (
-        <div className="flex items-start gap-3 py-2">
-          <Avatar className="h-12 w-12 border-2 border-primary/20">
-            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-bold text-lg">
-              {item.nome
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "h-2 w-2 rounded-full",
-                  item.status === "ativo" && "bg-green-500",
-                  item.status === "inativo" && "bg-red-500",
-                  item.status === "ferias" && "bg-yellow-500"
-                )}
-              />
-              <p className="font-semibold text-foreground leading-tight">{item.nome}</p>
-              {/* código_motorista oculto por solicitação do usuário */}
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">{formatarDocumento(item.documento)}</p>
-            <div className="mt-1 flex items-center gap-2">
-              <Badge variant={statusConfig[item.status].variant} className="text-[10px]">
-                {statusConfig[item.status].label}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">{tipoMotoristaConfig[item.tipo].label}</p>
-            {item.caminhao_atual && (
-              <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-950/40 rounded-md w-fit">
-                <Truck className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                <p className="text-xs font-mono text-blue-600 dark:text-blue-400 font-semibold">
-                  {item.caminhao_atual}
-                </p>
-              </div>
-            )}
-            {item.endereco && (
-              <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                <MapPin className="h-3 w-3" />
-                <span>{item.endereco}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "telefone",
-      header: "Contato",
-      render: (item: Motorista) => (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50">
-              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-foreground">{formatarTelefone(item.telefone)}</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50">
-              <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="truncate text-muted-foreground max-w-[180px]">{item.email}</span>
-            </span>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (item: Motorista) => (
-        <div className="space-y-2">
-          <Badge variant={statusConfig[item.status].variant} className="font-semibold w-fit">
-            {statusConfig[item.status].label}
-          </Badge>
-          {/* Admissão removida */}
-        </div>
-      ),
-    },
-    {
-      key: "receitaGerada",
-      header: "Desempenho",
-      render: (item: Motorista) => (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-profit" />
-            <span className="font-semibold text-profit">
-              R$ {toNumber(item.receita_gerada).toLocaleString("pt-BR")}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Award className="h-4 w-4" />
-            <span>{toNumber(item.viagens_realizadas)} viagens</span>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Média/viagem: R$ {Math.round(toNumber(item.receita_gerada) / Math.max(toNumber(item.viagens_realizadas), 1)).toLocaleString("pt-BR")}
-          </div>
-        </div>
-      ),
-    },
-  ];
 
-  // Simulated freight history
-  // Exemplo: agora o backend retorna id numérico e codigo_frete
-  const historicoFretes = [
-    { id: 1, codigo_frete: "FRETE-2026-001", rota: "SP → RJ", data: "20/01/2025", valor: "R$ 15.000" },
-    { id: 7, codigo_frete: "FRETE-2026-007", rota: "PR → SC", data: "15/01/2025", valor: "R$ 8.500" },
-    { id: 15, codigo_frete: "FRETE-2026-015", rota: "MG → DF", data: "10/01/2025", valor: "R$ 12.000" },
-  ];
+
+  const recentFretes = useMemo(() => {
+    if (!selectedMotorista) return [];
+    return [...fretesApi]
+      .filter((frete) =>
+        String(frete.proprietario_id || frete.motorista_id) === String(selectedMotorista.id)
+      )
+      .sort((a, b) => new Date(b.data_frete).getTime() - new Date(a.data_frete).getTime())
+      .slice(0, 3)
+      .map((frete, index) => ({
+        id: frete.id,
+        codigo: formatarCodigoFrete(frete.codigo_frete || frete.id, frete.data_frete, index + 1),
+        rota: `${frete.origem} → ${frete.destino}`,
+        data: formatarDataBrasileira(frete.data_frete),
+        valor: Number(frete.receita ?? frete.toneladas * frete.valor_por_tonelada) || 0,
+      }));
+  }, [fretesApi, selectedMotorista]);
 
   return (
     <MainLayout title="Motoristas" subtitle="Gestão de motoristas">
@@ -703,14 +655,24 @@ export default function Motoristas() {
         <Plus className="h-6 w-6" />
       </Button>
 
-      
 
-      <DataTable<Motorista>
-        columns={columns}
-        data={paginatedData}
-        onRowClick={(item) => setSelectedMotorista(item)}
-        emptyMessage="Nenhum motorista encontrado"
-      />
+
+      {paginatedData.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-muted/30 p-8 text-center">
+          <p className="text-sm text-muted-foreground">Nenhum motorista encontrado</p>
+        </div>
+      ) : (
+        <MotoristasCards
+          data={paginatedData}
+          onSelectMotorista={setSelectedMotorista}
+          getDriverInitials={getDriverInitials}
+          maskDocumento={maskDocumento}
+          toNumber={toNumber}
+          formatarTelefone={formatarTelefone}
+          statusConfig={statusConfig}
+          tipoMotoristaConfig={tipoMotoristaConfig}
+        />
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -824,7 +786,10 @@ export default function Motoristas() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <div className="flex items-center justify-between">
-              <DialogTitle>Detalhes do Motorista</DialogTitle>
+              <div>
+                <DialogTitle>Detalhes do Motorista</DialogTitle>
+                <DialogDescription>Resumo do perfil, contato e desempenho do motorista.</DialogDescription>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -843,536 +808,229 @@ export default function Motoristas() {
             </div>
           </DialogHeader>
           <div className="max-h-[calc(90vh-200px)] overflow-y-auto px-1">
-          {selectedMotorista && (
-            <div className="space-y-6">
-              {/* Header */}
-              <Card className="p-6 bg-gradient-to-br from-primary/5 to-transparent">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-20 w-20">
-                      <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
-                        {selectedMotorista.nome
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-2xl font-bold mb-1">{selectedMotorista.nome}</p>
-                      {/* código_motorista oculto por solicitação do usuário */}
-                      <p className="text-muted-foreground mb-2">{formatarDocumento(selectedMotorista.documento)}</p>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={statusConfig[selectedMotorista.status].variant}
-                          className="text-sm"
-                        >
-                          {statusConfig[selectedMotorista.status].label}
-                        </Badge>
+            {selectedMotorista && (
+              <div className="space-y-6">
+                {/* Header */}
+                <Card className="p-4 bg-gradient-to-br from-primary/5 to-transparent">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      <Avatar className="h-14 w-14">
+                        <AvatarFallback className="bg-primary/10 text-primary text-lg font-bold">
+                          {selectedMotorista.nome
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-lg font-bold mb-1">{selectedMotorista.nome}</p>
+                        {/* código_motorista oculto por solicitação do usuário */}
+                        <p className="text-sm text-muted-foreground mb-1">{formatarDocumento(selectedMotorista.documento)}</p>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={statusConfig[selectedMotorista.status].variant}
+                            className="text-xs"
+                          >
+                            {statusConfig[selectedMotorista.status].label}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">{tipoMotoristaConfig[selectedMotorista.tipo].label}</p>
                       </div>
-                      <p className="text-sm text-muted-foreground mt-2">{tipoMotoristaConfig[selectedMotorista.tipo].label}</p>
                     </div>
                   </div>
+                </Card>
+
+                {/* Contact Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
+                        <Phone className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Telefone</p>
+                        <p className="font-semibold">{formatarTelefone(selectedMotorista.telefone)}</p>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg">
+                        <Mail className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">E-mail</p>
+                        <p className="font-semibold text-sm">{selectedMotorista.email}</p>
+                      </div>
+                    </div>
+                  </Card>
                 </div>
-              </Card>
 
-              {/* Contact Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
-                      <Phone className="h-5 w-5 text-blue-600" />
+                {/* CNH and Truck Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card className="p-4 border-l-4 border-l-orange-500">
+                    <p className="text-sm text-muted-foreground mb-2">CNH</p>
+                    <p className="font-mono font-bold text-lg">{selectedMotorista.cnh}</p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <p className="text-xs text-muted-foreground">
+                        Validade: {formatarDataBrasileira(selectedMotorista.cnh_validade)}
+                      </p>
+                      {selectedMotorista.cnh_categoria && (
+                        <>
+                          <span className="text-muted-foreground">•</span>
+                          <Badge variant="outline" className="text-xs">
+                            Categoria {selectedMotorista.cnh_categoria}
+                          </Badge>
+                        </>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Telefone</p>
-                      <p className="font-semibold">{selectedMotorista.telefone}</p>
-                    </div>
-                  </div>
-                </Card>
+                  </Card>
 
-                <Card className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg">
-                      <Mail className="h-5 w-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">E-mail</p>
-                      <p className="font-semibold text-sm">{selectedMotorista.email}</p>
-                    </div>
-                  </div>
-                </Card>
-              </div>
 
-              {/* CNH and Truck Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="p-4 border-l-4 border-l-orange-500">
-                  <p className="text-sm text-muted-foreground mb-2">CNH</p>
-                  <p className="font-mono font-bold text-lg">{selectedMotorista.cnh}</p>
-                  <div className="flex items-center gap-3 mt-2">
-                    <p className="text-xs text-muted-foreground">
-                      Validade: {formatarDataBrasileira(selectedMotorista.cnh_validade)}
+                </div>
+
+                <Separator />
+
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-4">
+                  <Card className="p-4 bg-profit/5 border-profit/20">
+                    <p className="text-sm text-muted-foreground mb-2">Receita Gerada</p>
+                    <p className="text-2xl font-bold text-profit">
+                      R$ {toNumber(selectedMotorista.receita_gerada).toLocaleString("pt-BR")}
                     </p>
-                    {selectedMotorista.cnh_categoria && (
-                      <>
-                        <span className="text-muted-foreground">•</span>
-                        <Badge variant="outline" className="text-xs">
-                          Categoria {selectedMotorista.cnh_categoria}
-                        </Badge>
-                      </>
-                    )}
-                  </div>
-                </Card>
-
-
-              </div>
-
-              <Separator />
-
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-4">
-                <Card className="p-4 bg-profit/5 border-profit/20">
-                  <p className="text-sm text-muted-foreground mb-2">Receita Gerada</p>
-                  <p className="text-2xl font-bold text-profit">
-                    R$ {toNumber(selectedMotorista.receita_gerada).toLocaleString("pt-BR")}
-                  </p>
-                </Card>
-                <Card className="p-4 bg-primary/5 border-primary/20">
-                  <p className="text-sm text-muted-foreground mb-2">Viagens</p>
-                  <p className="text-2xl font-bold text-primary">
-                    {toNumber(selectedMotorista.viagens_realizadas)}
-                  </p>
-                </Card>
-                <Card className="p-4 bg-muted/50">
-                  {/* Admissão removida */}
-                </Card>
-              </div>
-
-              {/* Freight History */}
-              <div>
-                <h4 className="font-semibold mb-4 flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Histórico de Fretes Recentes
-                </h4>
-                <div className="space-y-2">
-                  {historicoFretes.map((frete) => (
-                    <Card
-                      key={frete.id}
-                      className="p-3 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          {/* Exibe o código do frete */}
-                          <span className="font-mono text-sm font-bold text-primary">{frete.codigo_frete}</span>
-                          <span className="font-medium">{frete.rota}</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="text-sm text-muted-foreground">{frete.data}</span>
-                          <span className="font-bold text-profit">{frete.valor}</span>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
+                  </Card>
+                  <Card className="p-4 bg-primary/5 border-primary/20">
+                    <p className="text-sm text-muted-foreground mb-2">Viagens</p>
+                    <p className="text-2xl font-bold text-primary">
+                      {toNumber(selectedMotorista.viagens_realizadas)}
+                    </p>
+                  </Card>
+                  <Card className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800">
+                    <p className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-300 mb-2">Média/viagem</p>
+                    <p className="text-2xl font-bold text-slate-700 dark:text-slate-200">
+                      R$ {(
+                        toNumber(selectedMotorista.receita_gerada) /
+                        Math.max(toNumber(selectedMotorista.viagens_realizadas), 1)
+                      ).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </Card>
                 </div>
-              </div>
 
-              <Separator />
-
-              {/* Payment Data */}
-              <div>
-                <h4 className="font-semibold mb-4 flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  Dados Bancários / PIX
-                </h4>
-                {selectedMotorista.tipo_pagamento === "pix" ? (
-                  <Card className="p-4 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-900">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Tipo de Chave PIX</p>
-                        <p className="font-semibold">
-                          {selectedMotorista.chave_pix_tipo === "cpf" && "CPF"}
-                          {selectedMotorista.chave_pix_tipo === "cnpj" && "CNPJ"}
-                          {selectedMotorista.chave_pix_tipo === "email" && "E-mail"}
-                          {selectedMotorista.chave_pix_tipo === "telefone" && "Telefone"}
-                          {selectedMotorista.chave_pix_tipo === "aleatoria" && "Chave Aleatória"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Chave PIX</p>
-                        <p className="font-mono bg-white dark:bg-slate-900 p-2 rounded border border-green-200 dark:border-green-900 break-all">
-                          {selectedMotorista.chave_pix}
-                        </p>
-                      </div>
+                {/* Freight History */}
+                <div>
+                  <h4 className="font-semibold mb-4 flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Histórico de Fretes Recentes
+                  </h4>
+                  {recentFretes.length === 0 ? (
+                    <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-center">
+                      <p className="text-sm text-muted-foreground">Nenhum frete recente encontrado.</p>
                     </div>
-                  </Card>
-                ) : selectedMotorista.banco ? (
-                  <Card className="p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Banco</p>
-                        <p className="font-semibold">{selectedMotorista.banco}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Agência</p>
-                        <p className="font-mono font-bold text-lg">{selectedMotorista.agencia}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Conta</p>
-                        <p className="font-mono font-bold text-lg">{selectedMotorista.conta}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Tipo de Conta</p>
-                        <p className="font-semibold">
-                          {selectedMotorista.tipo_conta === "corrente" ? "Corrente" : "Poupança"}
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-                ) : (
-                  <Card className="p-4 bg-muted/50">
-                    <p className="text-sm text-muted-foreground">Nenhum dado bancário cadastrado</p>
-                  </Card>
-                )}
-              </div>
-            </div>
-          )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Create/Edit Modal */}
-      <Dialog
-        open={isModalOpen}
-        onOpenChange={(open) => {
-          if (isSaving) return;
-          setIsModalOpen(open);
-          setErrosCampos({});
-        }}
-      >
-        <DialogContent className={`max-w-2xl ${isShaking ? "animate-shake" : ""}`}>
-          <DialogHeader>
-            <DialogTitle>
-              {isEditing ? "Editar Motorista" : "Novo Motorista"}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 max-h-[calc(90vh-200px)] overflow-y-auto px-1">
-            {/* Linha 1: Nome e Documento */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="nome">Nome Completo <span className="text-red-500">*</span></Label>
-                <Input
-                  id="nome"
-                  placeholder="João Silva"
-                  value={editedMotorista.nome || ""}
-                  onChange={(e) => {
-                    setEditedMotorista({ ...editedMotorista, nome: e.target.value });
-                    setErrosCampos({ ...errosCampos, nome: "" });
-                  }}
-                  onFocus={() => setErrosCampos({ ...errosCampos, nome: "" })}
-                  className={fieldErrorClass(errosCampos.nome)}
-                />
-                <FieldError message={errosCampos.nome} />
-              </div>
-
-              <InputMascarado
-                label="CPF ou CNPJ"
-                id="documento"
-                tipoMascara="documento"
-                placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                value={editedMotorista.documento || ""}
-                onChange={(e) => {
-                  setEditedMotorista({ ...editedMotorista, documento: e.target.value });
-                  setErrosCampos({ ...errosCampos, documento: "" });
-                }}
-                onDetectTipoDocumento={(tipo) => setDocumentoTipo(tipo)}
-                erro={errosCampos.documento}
-              />
-            </div>
-
-            {/* Linha 2: Telefone e E-mail */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InputMascarado
-                label="Telefone *"
-                id="telefone"
-                tipoMascara="telefone"
-                placeholder="(11) 98765-4321"
-                value={editedMotorista.telefone || ""}
-                onChange={(e) => {
-                  setEditedMotorista({ ...editedMotorista, telefone: e.target.value });
-                  setErrosCampos({ ...errosCampos, telefone: "" });
-                }}
-                erro={errosCampos.telefone}
-              />
-
-              <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="motorista@email.com"
-                  value={editedMotorista.email || ""}
-                  onChange={(e) => {
-                    setEditedMotorista({ ...editedMotorista, email: e.target.value });
-                    setErrosCampos({ ...errosCampos, email: "" });
-                  }}
-                  onFocus={() => setErrosCampos({ ...errosCampos, email: "" })}
-                  className={fieldErrorClass(errosCampos.email)}
-                />
-                <FieldError message={errosCampos.email} />
-              </div>
-            </div>
-
-            {/* Linha 3: Tipo */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="tipo">Tipo <span className="text-red-500">*</span></Label>
-                <Select
-                  value={editedMotorista.tipo || "proprio"}
-                  onValueChange={(value: "proprio" | "terceirizado" | "agregado") => {
-                    setEditedMotorista({
-                      ...editedMotorista,
-                      tipo: value,
-                    });
-                    setErrosCampos({ ...errosCampos, tipo: "" });
-                  }}
-                  onOpenChange={(open) => {
-                    if (open) setErrosCampos({ ...errosCampos, tipo: "" });
-                  }}
-                >
-                  <SelectTrigger className={fieldErrorClass(errosCampos.tipo)}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="proprio">Próprio</SelectItem>
-                    <SelectItem value="terceirizado">Terceirizado</SelectItem>
-                    <SelectItem value="agregado">Agregado</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FieldError message={errosCampos.tipo} />
-              </div>
-              
-            </div>
-
-            {/* Linha 4: Endereço e Status */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="endereco">Endereço</Label>
-                <Input
-                  id="endereco"
-                  placeholder="Cidade, Estado"
-                  value={editedMotorista.endereco || ""}
-                  onChange={(e) => setEditedMotorista({ ...editedMotorista, endereco: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="status">Status <span className="text-red-500">*</span></Label>
-                <Select
-                  value={editedMotorista.status || "ativo"}
-                  onValueChange={(value: "ativo" | "inativo" | "ferias") => {
-                    setEditedMotorista({ ...editedMotorista, status: value });
-                    setErrosCampos({ ...errosCampos, status: "" });
-                  }}
-                  onOpenChange={(open) => {
-                    if (open) setErrosCampos({ ...errosCampos, status: "" });
-                  }}
-                >
-                  <SelectTrigger className={fieldErrorClass(errosCampos.status)}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ativo">Ativo</SelectItem>
-                    <SelectItem value="inativo">Inativo</SelectItem>
-                    <SelectItem value="ferias">Férias</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FieldError message={errosCampos.status} />
-              </div>
-            </div>
-
-            {/* Linha 5: CNH removida */}
-
-            <Separator />
-
-            {/* Payment Method */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                Dados Bancários / PIX
-              </h3>
-
-              <div className="space-y-2">
-                <Label htmlFor="tipoPagamento">Método de Pagamento *</Label>
-                <Select
-                  value={editedMotorista.tipo_pagamento || "pix"}
-                  onValueChange={(value: "pix" | "transferencia_bancaria") =>
-                    setEditedMotorista({ ...editedMotorista, tipo_pagamento: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pix">PIX</SelectItem>
-                    <SelectItem value="transferencia_bancaria">Transferência Bancária</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* PIX Fields */}
-              {editedMotorista.tipo_pagamento === "pix" && (
-                <div className="space-y-4 p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-900">
-                  <div className="space-y-2">
-                    <Label htmlFor="chavePixTipo">Tipo de Chave PIX *</Label>
-                    <Select
-                      value={editedMotorista.chave_pix_tipo || "cpf"}
-                      onValueChange={(value: "cpf" | "cnpj" | "email" | "telefone" | "aleatoria") =>
-                        setEditedMotorista({ ...editedMotorista, chave_pix_tipo: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cpf">CPF</SelectItem>
-                        <SelectItem value="cnpj">CNPJ</SelectItem>
-                        <SelectItem value="email">E-mail</SelectItem>
-                        <SelectItem value="telefone">Telefone</SelectItem>
-                        <SelectItem value="aleatoria">Chave Aleatória</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {(editedMotorista.chave_pix_tipo === "cpf" || editedMotorista.chave_pix_tipo === "cnpj" || editedMotorista.chave_pix_tipo === "telefone") ? (
-                    <InputMascarado
-                      label="Chave PIX *"
-                      id="chave_pix"
-                      tipoMascara={(editedMotorista.chave_pix_tipo as string) === "telefone" ? "telefone" : "documento"}
-                      placeholder={
-                        editedMotorista.chave_pix_tipo === "cpf"
-                          ? "000.000.000-00"
-                          : editedMotorista.chave_pix_tipo === "cnpj"
-                            ? "00.000.000/0000-00"
-                          : "(11) 98765-4321"
-                      }
-                      value={editedMotorista.chave_pix || ""}
-                      onChange={(e) => {
-                        setEditedMotorista({ ...editedMotorista, chave_pix: e.target.value });
-                        setErrosCampos({ ...errosCampos, chave_pix: "" });
-                      }}
-                      erro={errosCampos.chave_pix}
-                    />
                   ) : (
                     <div className="space-y-2">
-                      <Label htmlFor="chave_pix">Chave PIX *</Label>
-                      <Input
-                        id="chave_pix"
-                        placeholder={
-                          (editedMotorista.chave_pix_tipo as string) === "email"
-                            ? "email@example.com"
-                            : "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                        }
-                        value={editedMotorista.chave_pix || ""}
-                        onChange={(e) => {
-                          setEditedMotorista({ ...editedMotorista, chave_pix: e.target.value });
-                          setErrosCampos({ ...errosCampos, chave_pix: "" });
-                        }}
-                        onFocus={() => setErrosCampos({ ...errosCampos, chave_pix: "" })}
-                        className={fieldErrorClass(errosCampos.chave_pix)}
-                      />
-                      <FieldError message={errosCampos.chave_pix} />
+                      {recentFretes.map((frete) => (
+                        <Card
+                          key={frete.id}
+                          className="p-3 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-4 min-w-0">
+                              <span className="font-mono text-sm font-bold text-primary">{frete.codigo}</span>
+                              <span className="font-medium truncate">{frete.rota}</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="text-sm text-muted-foreground">{frete.data}</span>
+                              <span className="font-bold text-profit">
+                                R$ {frete.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
                     </div>
                   )}
                 </div>
-              )}
 
-              {/* Bank Transfer Fields */}
-              {(editedMotorista.tipo_pagamento as string) === "transferencia_bancaria" && (
-                <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900">
-                  <div className="space-y-2">
-                    <Label htmlFor="banco">Banco *</Label>
-                    <Input
-                      id="banco"
-                      placeholder="Banco do Brasil"
-                      value={editedMotorista.banco || ""}
-                      onChange={(e) => {
-                        setEditedMotorista({ ...editedMotorista, banco: e.target.value });
-                        setErrosCampos({ ...errosCampos, banco: "" });
-                      }}
-                      onFocus={() => setErrosCampos({ ...errosCampos, banco: "" })}
-                      className={fieldErrorClass(errosCampos.banco)}
-                    />
-                    <FieldError message={errosCampos.banco} />
-                  </div>
+                <Separator />
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="agencia">Agência *</Label>
-                      <Input
-                        id="agencia"
-                        placeholder="1234"
-                        value={editedMotorista.agencia || ""}
-                        onChange={(e) => {
-                          setEditedMotorista({ ...editedMotorista, agencia: e.target.value });
-                          setErrosCampos({ ...errosCampos, agencia: "" });
-                        }}
-                        onFocus={() => setErrosCampos({ ...errosCampos, agencia: "" })}
-                        className={fieldErrorClass(errosCampos.agencia)}
-                      />
-                      <FieldError message={errosCampos.agencia} />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="conta">Conta *</Label>
-                      <Input
-                        id="conta"
-                        placeholder="567890-1"
-                        value={editedMotorista.conta || ""}
-                        onChange={(e) => {
-                          setEditedMotorista({ ...editedMotorista, conta: e.target.value });
-                          setErrosCampos({ ...errosCampos, conta: "" });
-                        }}
-                        onFocus={() => setErrosCampos({ ...errosCampos, conta: "" })}
-                        className={fieldErrorClass(errosCampos.conta)}
-                      />
-                      <FieldError message={errosCampos.conta} />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="tipoConta">Tipo de Conta *</Label>
-                    <Select
-                      value={editedMotorista.tipo_conta || "corrente"}
-                      onValueChange={(value: "corrente" | "poupanca") =>
-                        setEditedMotorista({ ...editedMotorista, tipo_conta: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="corrente">Corrente</SelectItem>
-                        <SelectItem value="poupanca">Poupança</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                {/* Payment Data */}
+                <div>
+                  <h4 className="font-semibold mb-4 flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    Dados Bancários / PIX
+                  </h4>
+                  {selectedMotorista.tipo_pagamento === "pix" ? (
+                    <Card className="p-4 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-900">
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Tipo de Chave PIX</p>
+                          <p className="font-semibold">
+                            {selectedMotorista.chave_pix_tipo === "cpf" && "CPF"}
+                            {selectedMotorista.chave_pix_tipo === "cnpj" && "CNPJ"}
+                            {selectedMotorista.chave_pix_tipo === "email" && "E-mail"}
+                            {selectedMotorista.chave_pix_tipo === "telefone" && "Telefone"}
+                            {selectedMotorista.chave_pix_tipo === "aleatoria" && "Chave Aleatória"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Chave PIX</p>
+                          <p className="font-mono bg-white dark:bg-slate-900 p-2 rounded border border-green-200 dark:border-green-900 break-all">
+                            {selectedMotorista.chave_pix}
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  ) : selectedMotorista.banco ? (
+                    <Card className="p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Banco</p>
+                          <p className="font-semibold">{selectedMotorista.banco}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Agência</p>
+                          <p className="font-mono font-bold text-lg">{selectedMotorista.agencia}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Conta</p>
+                          <p className="font-mono font-bold text-lg">{selectedMotorista.conta}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Tipo de Conta</p>
+                          <p className="font-semibold">
+                            {selectedMotorista.tipo_conta === "corrente" ? "Corrente" : "Poupança"}
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  ) : (
+                    <Card className="p-4 bg-muted/50">
+                      <p className="text-sm text-muted-foreground">Nenhum dado bancário cadastrado</p>
+                    </Card>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-
-          <DialogFooter className="gap-2">
-            <ModalSubmitFooter
-              onCancel={() => {
-                setIsModalOpen(false);
-                setErrosCampos({});
-              }}
-              onSubmit={handleSave}
-              isSubmitting={isSaving}
-              submitLabel={isEditing ? "Salvar Alterações" : "Cadastrar Motorista"}
-            />
-          </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MotoristaFormModal
+        isModalOpen={isModalOpen}
+        isEditing={isEditing}
+        isSaving={isSaving}
+        isShaking={isShaking}
+        editedMotorista={editedMotorista}
+        setEditedMotorista={setEditedMotorista}
+        errosCampos={errosCampos}
+        setErrosCampos={setErrosCampos}
+        setDocumentoTipo={setDocumentoTipo}
+        handleSave={handleSave}
+        onClose={() => setIsModalOpen(false)}
+        onOpenChange={setIsModalOpen}
+        editRouteHandledRef={editRouteHandledRef}
+      />
     </MainLayout>
   );
 }

@@ -2,6 +2,11 @@ import api from "@/api/axios";
 import { isAxiosError } from "axios";
 import type { ApiResponse, Frete, CriarFretePayload } from "@/types";
 
+export interface AtualizarFreteCustosPayload {
+  custos: number;
+  resultado: number;
+}
+
 interface BackendFretesResponse {
   success: boolean;
   message: string;
@@ -61,7 +66,8 @@ export async function criarFrete(payload: CriarFretePayload): Promise<ApiRespons
     if (isAxiosError(err)) {
       message = err.response?.data?.message ?? err.response?.data?.error ?? err.message ?? message;
       const status = err.response?.status;
-      return { success: false, data: null, message, status };
+      const field = err.response?.data?.field;
+      return { success: false, data: null, message, status, field };
     } else if (err instanceof Error) {
       message = err.message;
     } else if (typeof err === "string") {
@@ -95,9 +101,14 @@ export async function obterFrete(id: string): Promise<ApiResponse<Frete>> {
   }
 }
 
-export async function listarFretesPendentes(motoristaId?: string): Promise<ApiResponse<Frete[]>> {
+export async function listarFretesPendentes(params?: { motoristaId?: string; proprietarioId?: string }): Promise<ApiResponse<Frete[]>> {
   try {
-    const url = motoristaId ? `/fretes/pendentes?motorista_id=${motoristaId}` : "/fretes/pendentes";
+    const query = params?.proprietarioId
+      ? `proprietario_id=${params.proprietarioId}`
+      : params?.motoristaId
+        ? `motorista_id=${params.motoristaId}`
+        : "";
+    const url = query ? `/fretes/pendentes?${query}` : "/fretes/pendentes";
     const res = await api.get<BackendFretesResponse>(url);
 
     if (res.data.success && res.data.data) {
@@ -107,6 +118,36 @@ export async function listarFretesPendentes(motoristaId?: string): Promise<ApiRe
     return { success: false, data: null, message: "Resposta inválida do servidor" };
   } catch (err: unknown) {
     let message = "Erro ao listar fretes pendentes";
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      const status = err.response?.status;
+      return { success: false, data: null, message, status };
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
+    return { success: false, data: null, message };
+  }
+}
+export async function atualizarFrete(
+  id: string,
+  payload: AtualizarFreteCustosPayload
+): Promise<ApiResponse<Frete>> {
+  try {
+    const res = await api.put<{ success: boolean; message: string; data: Frete }>(
+      `/fretes/${id}`,
+      payload
+    );
+
+    if (res.data.success && res.data.data) {
+      return { success: true, data: res.data.data, status: res.status };
+    }
+
+    // Backend pode responder sem data (apenas confirmar o update)
+    return { success: true, data: null, status: res.status };
+  } catch (err: unknown) {
+    let message = "Erro ao atualizar frete";
     if (isAxiosError(err)) {
       message = err.response?.data?.message ?? err.message ?? message;
       const status = err.response?.status;

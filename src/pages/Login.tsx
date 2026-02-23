@@ -226,7 +226,7 @@ export default function Login() {
             <button
               type="button"
               className="text-sm text-primary hover:underline font-medium transition-colors"
-              onClick={() => {}}
+              onClick={() => navigate("/recuperar-senha")}
               disabled={isSubmitting}
             >
               Esqueci minha senha

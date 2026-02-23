@@ -41,10 +41,9 @@ import { toast } from "sonner";
 import caminhoesService from "@/services/caminhoes";
 import motoristasService from "@/services/motoristas";
 import type { Caminhao, CriarCaminhaoPayload, Motorista } from "@/types";
-import { formatPlaca, emptyToNull } from "@/lib/utils";
+import { cn, formatPlaca, emptyToNull } from "@/lib/utils";
 import { sortMotoristasPorNome } from "@/lib/sortHelpers";
 import { formatarDocumento } from '@/utils/formatters';
-import { ITEMS_PER_PAGE } from "@/lib/pagination";
 import { ModalSubmitFooter } from "@/components/shared/ModalSubmitFooter";
 import { RefreshingIndicator } from "@/components/shared/RefreshingIndicator";
 import { useRefreshData } from "@/hooks/useRefreshData";
@@ -57,17 +56,33 @@ const statusConfig = {
   inativo: { label: "Inativo", variant: "cancelled" as const },
 };
 
+const getFleetType = (caminhao: Caminhao): "PROPRIO" | "TERCEIRO" => {
+  if (caminhao.proprietario_tipo === "PROPRIO") return "PROPRIO";
+  if (caminhao.proprietario_tipo === "TERCEIRO") return "TERCEIRO";
+  return caminhao.motorista_fixo_id ? "TERCEIRO" : "PROPRIO";
+};
+
+const formatVehicleCategory = (vehicleType?: Caminhao["tipo_veiculo"]) => {
+  if (!vehicleType) return "Não informada";
+  return vehicleType
+    .toString()
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
 export default function Frota() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [fleetFilter, setFleetFilter] = useState<"all" | "proprio" | "terceiro">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedCaminhao, setSelectedCaminhao] = useState<Caminhao | null>(null);
   const [editedCaminhao, setEditedCaminhao] = useState<Partial<CriarCaminhaoPayload>>({});
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = ITEMS_PER_PAGE;
+  const itemsPerPage = 21;
   const { isRefreshing, startRefresh, endRefresh } = useRefreshData();
 
   // Query para buscar caminhões
@@ -86,6 +101,9 @@ export default function Frota() {
 
   const caminhoes = caminhoesResponse?.data || [];
   const motoristasDisponiveis = sortMotoristasPorNome(motoristasResponse?.data || []);
+  const transportadoraContelli = motoristasDisponiveis.find(
+    (motorista) => String(motorista.nome || "").trim().toUpperCase() === "TRANSPORTADORA CONTELLI"
+  );
   const [autoFilledFields, setAutoFilledFields] = useState<{ placa?: boolean; motorista?: boolean; proprietario_tipo?: boolean }>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const resetFormErrors = () => setFormErrors({});
@@ -96,6 +114,13 @@ export default function Frota() {
       delete next[field];
       return next;
     });
+  };
+  const applyUniqueFieldError = (message?: string) => {
+    const fallback = "Erro ao salvar caminhão";
+    const text = String(message || fallback);
+    const isPlacaUnique = /placa/i.test(text) || /duplicate entry/i.test(text);
+    setFormErrors({ [isPlacaUnique ? "placa" : "modelo"]: text });
+    triggerShake();
   };
   const { isShaking, triggerShake } = useShake(220);
 
@@ -138,12 +163,13 @@ export default function Frota() {
           setIsModalOpen(false);
           endRefresh();
         } else {
-          toast.error(response.message || "Erro ao cadastrar caminhão");
+          applyUniqueFieldError(response.message || "Erro ao cadastrar caminhão");
           endRefresh();
         }
     },
-    onError: () => {
-      toast.error("Erro ao cadastrar caminhão");
+    onError: (error: any) => {
+      const message = error?.message || "Erro ao cadastrar caminhão";
+      applyUniqueFieldError(message);
       endRefresh();
     },
   });
@@ -159,12 +185,13 @@ export default function Frota() {
         setIsModalOpen(false);
         endRefresh();
       } else {
-        toast.error(response.message || "Erro ao atualizar caminhão");
+        applyUniqueFieldError(response.message || "Erro ao atualizar caminhão");
         endRefresh();
       }
     },
-    onError: () => {
-      toast.error("Erro ao atualizar caminhão");
+    onError: (error: any) => {
+      const message = error?.message || "Erro ao atualizar caminhão";
+      applyUniqueFieldError(message);
       endRefresh();
     },
   });
@@ -257,7 +284,7 @@ export default function Frota() {
     if (!String(editedCaminhao.placa || "").trim()) nextErrors.placa = "Placa é obrigatória.";
     if (!String(editedCaminhao.modelo || "").trim()) nextErrors.modelo = "Modelo é obrigatório.";
     if (!editedCaminhao.tipo_veiculo) nextErrors.tipo_veiculo = "Tipo de veículo é obrigatório.";
-    if (!editedCaminhao.ano_fabricacao) nextErrors.ano_fabricacao = "Ano é obrigatório.";
+    if (!editedCaminhao.proprietario_tipo) nextErrors.proprietario_tipo = "Tipo de proprietário é obrigatório.";
 
     if (Object.keys(nextErrors).length > 0) {
       setFormErrors(nextErrors);
@@ -330,13 +357,11 @@ export default function Frota() {
       return v;
     };
 
-    // Determine proprietario_tipo based on motorista_fixo_id presence
-    let proprietarioTipo: string;
-    if (editedCaminhao.motorista_fixo_id) {
-      proprietarioTipo = "TERCEIRO";
-    } else {
-      proprietarioTipo = "PROPRIO";
-    }
+    const proprietarioTipo = mapProprietarioTipo(editedCaminhao.proprietario_tipo);
+    const motoristaFixoIdFinal =
+      proprietarioTipo === "PROPRIO"
+        ? (transportadoraContelli?.id || editedCaminhao.motorista_fixo_id || null)
+        : (editedCaminhao.motorista_fixo_id ? String(editedCaminhao.motorista_fixo_id) : null);
 
     const payload: CriarCaminhaoPayload = {
       placa: placaNorm.toUpperCase() as string,
@@ -348,9 +373,7 @@ export default function Frota() {
       status: editedCaminhao.status || "disponivel",
       km_atual: editedCaminhao.km_atual || 0,
       tipo_combustivel: editedCaminhao.tipo_combustivel,
-      motorista_fixo_id: editedCaminhao.motorista_fixo_id
-        ? String(editedCaminhao.motorista_fixo_id)
-        : null,
+      motorista_fixo_id: motoristaFixoIdFinal,
       proprietario_tipo: proprietarioTipo as any,
       renavam: editedCaminhao.renavam || undefined,
       chassi: editedCaminhao.chassi || undefined,
@@ -378,23 +401,46 @@ export default function Frota() {
   };
 
   const filteredData = caminhoes.filter((caminhao) => {
+    const motorista = motoristasDisponiveis.find((m) => m.id === caminhao.motorista_fixo_id);
     const matchesSearch =
       caminhao.placa.toLowerCase().includes(search.toLowerCase()) ||
-      caminhao.modelo.toLowerCase().includes(search.toLowerCase());
+      caminhao.modelo.toLowerCase().includes(search.toLowerCase()) ||
+      (motorista?.nome || "").toLowerCase().includes(search.toLowerCase());
     const matchesStatus =
       statusFilter === "all" || caminhao.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesFleet =
+      fleetFilter === "all" ||
+      (fleetFilter === "proprio" && getFleetType(caminhao) === "PROPRIO") ||
+      (fleetFilter === "terceiro" && getFleetType(caminhao) === "TERCEIRO");
+    return matchesSearch && matchesStatus && matchesFleet;
   });
 
+  const orderedData = [...filteredData].sort((a, b) => {
+    const aType = getFleetType(a) === "PROPRIO" ? 0 : 1;
+    const bType = getFleetType(b) === "PROPRIO" ? 0 : 1;
+    if (aType !== bType) return aType - bType;
+    return a.modelo.localeCompare(b.modelo, "pt-BR");
+  });
+
+  const fleetSummary = {
+    proprio: caminhoes.filter((c) => getFleetType(c) === "PROPRIO").length,
+    terceiro: caminhoes.filter((c) => getFleetType(c) === "TERCEIRO").length,
+  };
+  const emOperacaoCount = caminhoes.filter((c) => c.status === "disponivel" || c.status === "em_viagem").length;
+  const emManutencaoCount = caminhoes.filter((c) => c.status === "em_manutencao").length;
+  const categoriasAtivasCount = new Set(caminhoes.map((c) => c.tipo_veiculo).filter(Boolean)).size;
+
   // Lógica de paginação
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const totalPages = Math.ceil(orderedData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedData = orderedData.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedProprios = paginatedData.filter((c) => getFleetType(c) === "PROPRIO");
+  const paginatedTerceiros = paginatedData.filter((c) => getFleetType(c) === "TERCEIRO");
 
   // Resetar para página 1 quando aplicar novos filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, fleetFilter]);
 
   // Limpar marcação de auto-filled quando modal fechar
   useEffect(() => {
@@ -467,7 +513,7 @@ export default function Frota() {
     },
     {
       key: "motorista_fixo_id",
-      header: "Motorista",
+      header: "Proprietário / Transportadora",
       render: (item: Caminhao) => {
         const motorista = motoristasDisponiveis.find(m => m.id === item.motorista_fixo_id);
         return (
@@ -697,12 +743,88 @@ export default function Frota() {
     },
   ];
 
+  const listColumns = [
+    {
+      key: "placa",
+      header: "Caminhão",
+      render: (item: Caminhao) => {
+        const fleetType = getFleetType(item);
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-semibold text-base text-foreground">{item.placa}</p>
+              <Badge variant={fleetType === "PROPRIO" ? "default" : "outline"} className="text-[10px] px-2 py-0 font-semibold">
+                {fleetType === "PROPRIO" ? "Frota Própria" : "Terceirizado"}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">{item.modelo}</p>
+          </div>
+        );
+      },
+    },
+    {
+      key: "motorista",
+      header: "Proprietário / Transportadora",
+      render: (item: Caminhao) => {
+        const fleetType = getFleetType(item);
+        const motorista = motoristasDisponiveis.find((m) => m.id === item.motorista_fixo_id);
+        if (fleetType === "TERCEIRO" && motorista) {
+          return <p className="text-sm font-medium text-foreground">{motorista.nome}</p>;
+        }
+        return <span className="text-xs text-muted-foreground">Frota própria (sem proprietário definido)</span>;
+      },
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (item: Caminhao) => (
+        <Badge variant={statusConfig[item.status].variant} className="font-semibold text-xs px-3 py-1 whitespace-nowrap">
+          {statusConfig[item.status].label}
+        </Badge>
+      ),
+    },
+    {
+      key: "acoes",
+      header: "Ações",
+      render: (item: Caminhao) => (
+        <div className="flex items-center gap-2 justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setSelectedCaminhao(item);
+            }}
+            className="gap-1.5"
+          >
+            <Eye className="h-4 w-4" />
+            <span className="text-xs">Ver</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleOpenEditModal(item);
+            }}
+            className="gap-1.5"
+          >
+            <Edit className="h-4 w-4" />
+            <span className="text-xs">Editar</span>
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <MainLayout title="Frota" subtitle="Gestão da frota">
       <RefreshingIndicator isRefreshing={isRefreshing} />
       <PageHeader
         title="Frota de Veículos"
-        description="Gestão completa da frota, documentação e manutenção"
+        description="Visualização simplificada da frota operacional"
         actions={
           <Button onClick={handleOpenNewModal}>
             <Plus className="h-4 w-4 mr-2" />
@@ -712,8 +834,8 @@ export default function Frota() {
       />
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="p-3 bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/40 dark:to-green-900/20 border-green-200 dark:border-green-800">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-4 gap-4 mb-6">
+        <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/40 dark:to-green-900/20 border-green-200 dark:border-green-800">
           <div className="flex items-center gap-2.5">
             <div className="h-10 w-10 rounded-lg bg-green-600 flex items-center justify-center">
               <Truck className="h-5 w-5 text-white" />
@@ -725,59 +847,85 @@ export default function Frota() {
           </div>
         </Card>
 
-        <Card className="p-3 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20 border-blue-200 dark:border-blue-800">
+        <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20 border-blue-200 dark:border-blue-800">
           <div className="flex items-center gap-2.5">
             <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center">
               <Truck className="h-5 w-5 text-white" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Disponíveis</p>
+              <p className="text-xs text-muted-foreground">Frota Própria</p>
               <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
-                {caminhoes.filter(c => c.status === "disponivel").length}
+                {caminhoes.filter(c => getFleetType(c) === "PROPRIO").length}
               </p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-3 bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/40 dark:to-orange-900/20 border-orange-200 dark:border-orange-800">
+        <Card className="p-4 bg-gradient-to-br from-slate-50 to-slate-100/60 dark:from-slate-900/50 dark:to-slate-800/30 border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-2.5">
-            <div className="h-10 w-10 rounded-lg bg-orange-600 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-lg bg-slate-600 flex items-center justify-center">
+              <Truck className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Terceirizados</p>
+              <p className="text-xl font-bold text-slate-700 dark:text-slate-300">
+                {caminhoes.filter(c => getFleetType(c) === "TERCEIRO").length}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4 bg-gradient-to-br from-red-50 to-red-100/50 dark:from-red-950/40 dark:to-red-900/20 border-red-200 dark:border-red-800">
+          <div className="flex items-center gap-2.5">
+            <div className="h-10 w-10 rounded-lg bg-red-600 flex items-center justify-center">
               <AlertCircle className="h-5 w-5 text-white" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Alertas Documentação</p>
-              <p className="text-xl font-bold text-orange-700 dark:text-orange-400">
-                {caminhoes.filter(c => 
-                  isDocumentExpired(c.validade_seguro || undefined) || 
-                  isDocumentExpired(c.validade_licenciamento || undefined) ||
-                  isDocumentExpiringSoon(c.validade_seguro || undefined) ||
-                  isDocumentExpiringSoon(c.validade_licenciamento || undefined)
-                ).length}
+              <p className="text-xs text-muted-foreground">Em Operação</p>
+              <p className="text-xl font-bold text-red-700 dark:text-red-400">
+                {emOperacaoCount}
               </p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-3 bg-gradient-to-br from-red-50 to-red-100/50 dark:from-red-950/40 dark:to-red-900/20 border-red-200 dark:border-red-800">
-          <div className="flex items-center gap-2.5">
-            <div className="h-10 w-10 rounded-lg bg-red-600 flex items-center justify-center">
-              <Wrench className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Manutenção Crítica</p>
-              <p className="text-xl font-bold text-red-700 dark:text-red-400">
-                {caminhoes.filter(c => c.proxima_manutencao_km && getMaintenanceStatus(c.km_atual, c.proxima_manutencao_km) === "critical").length}
-              </p>
-            </div>
-          </div>
-        </Card>
       </div>
 
       <FilterBar
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Buscar por placa ou modelo..."
+        searchPlaceholder="Buscar por placa, modelo ou proprietário..."
       >
+        <div className="inline-flex items-center rounded-md border bg-muted/30 p-1 mr-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={fleetFilter === "all" ? "default" : "ghost"}
+            className="h-8 px-3 text-xs"
+            onClick={() => setFleetFilter("all")}
+          >
+            Todos
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={fleetFilter === "proprio" ? "default" : "ghost"}
+            className="h-8 px-3 text-xs"
+            onClick={() => setFleetFilter("proprio")}
+          >
+            Própria
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={fleetFilter === "terceiro" ? "default" : "ghost"}
+            className="h-8 px-3 text-xs"
+            onClick={() => setFleetFilter("terceiro")}
+          >
+            Terceirizada
+          </Button>
+        </div>
+
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Status" />
@@ -801,12 +949,83 @@ export default function Frota() {
         </div>
       ) : (
         <>
-          <DataTable<Caminhao>
-            columns={columns}
-            data={paginatedData}
-            emptyMessage="Nenhum caminhão encontrado"
-            onRowClick={(caminhao) => setSelectedCaminhao(caminhao)}
-          />
+          <div className="space-y-6">
+            <div className="rounded-xl border bg-card p-4 md:p-5">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4">
+                <Badge className="text-xs md:text-sm px-2.5 py-1">Frota Própria: {fleetSummary.proprio}</Badge>
+                <Badge variant="outline" className="text-xs md:text-sm px-2.5 py-1">Terceirizados: {fleetSummary.terceiro}</Badge>
+                <Badge variant="secondary" className="text-xs md:text-sm px-2.5 py-1">Exibindo: {paginatedData.length}</Badge>
+              </div>
+
+              {paginatedData.length === 0 ? (
+                <div className="rounded-lg border border-dashed bg-muted/30 p-8 text-center">
+                  <p className="text-sm text-muted-foreground">Nenhum caminhão encontrado</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {paginatedData.map((item) => {
+                    const motorista = motoristasDisponiveis.find((m) => m.id === item.motorista_fixo_id);
+                    const isProprio = getFleetType(item) === "PROPRIO";
+                    return (
+                      <Card
+                        key={item.id}
+                        className={`p-5 rounded-xl border bg-gradient-to-br from-card to-muted/30 hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+                          isProprio ? "border-l-4 border-l-primary/60" : "border-l-4 border-l-foreground/20"
+                        }`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedCaminhao(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedCaminhao(item);
+                          }
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${isProprio ? "bg-primary/10" : "bg-muted/60"}`}>
+                              <Truck className={`h-4 w-4 ${isProprio ? "text-primary" : "text-foreground/70"}`} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-base tracking-wide">{item.placa}</p>
+                              <p className="text-xs text-muted-foreground truncate">{item.modelo}</p>
+                            </div>
+                          </div>
+                          <Badge variant={isProprio ? "default" : "outline"} className="text-[11px] px-2.5 py-1">
+                            {isProprio ? "Frota Própria" : "Terceirizado"}
+                          </Badge>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Badge variant={statusConfig[item.status].variant} className="text-[11px] px-2.5 py-1">
+                            {statusConfig[item.status].label}
+                          </Badge>
+                          <span className="inline-flex items-center rounded-md border bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-foreground">
+                            {formatVehicleCategory(item.tipo_veiculo)}
+                          </span>
+                          <span className="inline-flex items-center rounded-md border bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+                            {item.capacidade_toneladas}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 rounded-md border bg-muted/30 px-2.5 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Proprietário / Transportadora</p>
+                          <p className="text-sm font-semibold leading-tight text-foreground truncate">
+                            {motorista?.nome || "Sem proprietário definido"}
+                          </p>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-end text-[10px] text-muted-foreground">
+                          <span>{isProprio ? "Operação própria" : "Operação terceirizada"}</span>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
@@ -877,7 +1096,7 @@ export default function Frota() {
               </PaginationContent>
             </Pagination>
             <div className="text-xs text-muted-foreground ml-4 flex items-center">
-              Página {currentPage} de {totalPages} • {filteredData.length} registros
+              Página {currentPage} de {totalPages} • {orderedData.length} registros
             </div>
           </div>
         )}
@@ -1019,7 +1238,7 @@ export default function Frota() {
                   <>
                     <Separator />
                     <Card className="p-4 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900">
-                      <p className="text-sm text-muted-foreground mb-2">Motorista Fixo</p>
+                      <p className="text-sm text-muted-foreground mb-2">Proprietário / Transportadora</p>
                       <div className="space-y-2">
                         <p className="font-semibold text-lg text-blue-700 dark:text-blue-300">{motorista.nome}</p>
                         <div className="flex items-center gap-4 text-sm">
@@ -1133,6 +1352,23 @@ export default function Frota() {
             </div>
           )}
           </div>
+          {selectedCaminhao && (
+            <DialogFooter className="pt-4">
+              <Button variant="outline" onClick={() => setSelectedCaminhao(null)}>
+                Fechar
+              </Button>
+              <Button
+                onClick={() => {
+                  handleOpenEditModal(selectedCaminhao);
+                  setSelectedCaminhao(null);
+                }}
+                className="gap-2"
+              >
+                <Edit className="h-4 w-4" />
+                Editar Caminhão
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1271,7 +1507,7 @@ export default function Frota() {
                 <div className="space-y-2">
                   <Label htmlFor="anoFabricacao" className="flex items-center gap-2">
                     <CalendarDays className="h-4 w-4 text-primary" />
-                    Ano *
+                    Ano
                   </Label>
                   <Select
                     value={(editedCaminhao.ano_fabricacao ? String(editedCaminhao.ano_fabricacao) : "")}
@@ -1365,13 +1601,28 @@ export default function Frota() {
                     Tipo de Proprietário
                   </Label>
                   <Select
-                    value={editedCaminhao.proprietario_tipo || "PROPRIO"}
-                    onValueChange={(value: "PROPRIO" | "TERCEIRO" | "AGREGADO") =>
-                      setEditedCaminhao({ ...editedCaminhao, proprietario_tipo: value })
-                    }
+                    value={editedCaminhao.proprietario_tipo || undefined}
+                    onValueChange={(value: "PROPRIO" | "TERCEIRO" | "AGREGADO") => {
+                      const isChangingFromProprio = editedCaminhao.proprietario_tipo === "PROPRIO";
+                      const shouldClearAutoOwner =
+                        value !== "PROPRIO" &&
+                        isChangingFromProprio &&
+                        Boolean(transportadoraContelli?.id) &&
+                        String(editedCaminhao.motorista_fixo_id || "") === String(transportadoraContelli?.id || "");
+
+                      setEditedCaminhao({
+                        ...editedCaminhao,
+                        proprietario_tipo: value,
+                        motorista_fixo_id:
+                          value === "PROPRIO"
+                            ? (transportadoraContelli?.id || editedCaminhao.motorista_fixo_id)
+                            : (shouldClearAutoOwner ? undefined : editedCaminhao.motorista_fixo_id),
+                      });
+                      clearFormError("proprietario_tipo");
+                    }}
                   >
-                    <SelectTrigger className={autoFilledFields.proprietario_tipo ? 'bg-blue-50 dark:bg-blue-900/40' : ''}>
-                      <SelectValue />
+                    <SelectTrigger className={cn(fieldErrorClass(formErrors.proprietario_tipo), autoFilledFields.proprietario_tipo ? 'bg-blue-50 dark:bg-blue-900/40' : '')}>
+                      <SelectValue placeholder="Selecione o tipo de proprietário" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="PROPRIO">Próprio</SelectItem>
@@ -1379,13 +1630,14 @@ export default function Frota() {
                       <SelectItem value="AGREGADO">Agregado</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FieldError message={formErrors.proprietario_tipo} />
                 </div>
               </div>
             </div>
 
             <Separator className="my-4" />
 
-            {/* Seção: Status e Motorista (Operacional) */}
+            {/* Seção: Status e Proprietário (Operacional) */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-1 w-1 rounded-full bg-primary" />
@@ -1437,7 +1689,7 @@ export default function Frota() {
                 <div className="space-y-2">
                   <Label htmlFor="motoristaFixoId" className="flex items-center gap-2">
                     <Truck className="h-4 w-4 text-primary" />
-                    Motorista Fixo
+                    Proprietário / Transportadora
                   </Label>
                   <Select
                     value={editedCaminhao.motorista_fixo_id || "___none___"}
@@ -1449,10 +1701,10 @@ export default function Frota() {
                     }
                   >
                     <SelectTrigger id="motoristaFixoId" className={autoFilledFields.motorista ? 'bg-blue-50 dark:bg-blue-900/40' : ''}>
-                      <SelectValue placeholder="Selecione um motorista (opcional)" />
+                      <SelectValue placeholder="Selecione o proprietário/transportadora (opcional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="___none___">Nenhum (Sem motorista fixo)</SelectItem>
+                      <SelectItem value="___none___">Nenhum (Sem proprietário definido)</SelectItem>
                       {motoristasDisponiveis
                         .filter(m => m.status === "ativo")
                         .map((motorista) => (
@@ -1469,7 +1721,7 @@ export default function Frota() {
                         ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">Motorista fixo que opera este veículo regularmente</p>
+                  <p className="text-xs text-muted-foreground">Proprietário ou transportadora responsável por este veículo</p>
                 </div>
               </div>
             </div>

@@ -158,3 +158,78 @@ export async function register(nome: string, email: string, senha: string): Prom
     return { success: false, data: null, message, status };
   }
 }
+
+export async function forgotPassword(email: string): Promise<ApiResponse<{ message: string }>> {
+  try {
+    const normalizedEmail = String(email ?? "").trim().toLowerCase();
+    const res = await api.post<{ success: boolean; message: string }>(
+      "/recuperar-senha",
+      { email: normalizedEmail }
+    );
+
+    const status = res.status;
+    if (res.data.success) {
+      return {
+        success: true,
+        data: { message: res.data.message },
+        message: res.data.message,
+        status,
+      };
+    }
+
+    return { success: false, data: null, message: res.data.message ?? "Erro ao enviar email", status };
+  } catch (err: unknown) {
+    let message = "Erro ao solicitar recuperação de senha";
+    let status: number | undefined = undefined;
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      status = err.response?.status;
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
+    return { success: false, data: null, message, status };
+  }
+}
+
+export async function resetPassword(
+  token: string,
+  novaSenha: string,
+  confirmaSenha: string
+): Promise<ApiResponse<{ message: string }>> {
+  try {
+    const res = await api.post<{ success: boolean; message: string }>(
+      "/redefinir-senha",
+      {
+        token,
+        novaSenha,
+        confirmaSenha,
+      }
+    );
+
+    const status = res.status;
+    if (res.data.success) {
+      return {
+        success: true,
+        data: { message: res.data.message },
+        message: res.data.message,
+        status,
+      };
+    }
+
+    return { success: false, data: null, message: res.data.message ?? "Erro ao redefinir senha", status };
+  } catch (err: unknown) {
+    let message = "Erro ao redefinir senha";
+    let status: number | undefined = undefined;
+    if (isAxiosError(err)) {
+      message = err.response?.data?.message ?? err.message ?? message;
+      status = err.response?.status;
+    } else if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === "string") {
+      message = err;
+    }
+    return { success: false, data: null, message, status };
+  }
+}

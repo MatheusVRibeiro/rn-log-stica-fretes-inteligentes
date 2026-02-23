@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -66,15 +66,63 @@ import { ITEMS_PER_PAGE } from "@/lib/pagination";
 import { RefreshingIndicator } from "@/components/shared/RefreshingIndicator";
 import { useRefreshData } from "@/hooks/useRefreshData";
 import { useShake } from "@/hooks/useShake";
+import { formatarCodigoFrete } from "@/utils/formatters";
 
-const tipoConfig = {
+export const tipoConfig = {
   combustivel: { label: "Combustível", icon: Fuel, color: "text-warning" },
   manutencao: { label: "Manutenção", icon: Wrench, color: "text-loss" },
   pedagio: { label: "Pedágio", icon: Truck, color: "text-primary" },
   outros: { label: "Outros", icon: FileText, color: "text-muted-foreground" },
 };
 
+// Função para formatar nome de fazenda/local
+const formatFazendaNome = (nome: string): string => {
+  if (!nome) return "";
+  // Remove tudo após " - " (ex: "Filial 1 - secagem" → "Filial 1")
+  if (nome.includes(" - ")) {
+    return nome.split(" - ")[0].trim();
+  }
+  // Se começar com "Fazenda", abrevia e pega apenas as palavras principais
+  if (nome.toLowerCase().includes("fazenda")) {
+    // "Fazenda Santa Rosa secagem" → "Faz Sta Rosa"
+    const words = nome.split(" ");
+    const nonSecagem = words.filter(w => !w.toLowerCase().includes("secagem")).slice(0, 3);
+    if (nonSecagem[0].toLowerCase() === "fazenda") {
+      nonSecagem[0] = "Faz";
+    }
+    return nonSecagem.join(" ").substring(0, 20);
+  }
+  return nome;
+};
+
+const getFreteCodeFallback = (freteId: unknown): string => {
+  if (freteId === null || freteId === undefined) return "";
+  const value = String(freteId).trim();
+  if (!value) return "";
+  return value.slice(0, 8).toUpperCase();
+};
+
+const normalizeFreteRef = (value: unknown): string =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+// Função para renderizar frete no Select com novo formato
+const formatFreteSelect = (frete: Frete): string => {
+  const codigo = frete.codigo_frete || getFreteCodeFallback(frete.id);
+  const favorecidoNome = frete.proprietario_nome || frete.motorista_nome || "";
+  const motorista = favorecidoNome
+    ? favorecidoNome.split(" ").slice(0, 2).join(" ")
+    : "";
+  const placa = frete.caminhao_placa || "";
+  const destino = formatFazendaNome(frete.destino);
+  return `${codigo} • ${motorista} • ${placa} • ${destino}`.trim();
+};
+
+
 export default function Custos() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isRefreshing, startRefresh, endRefresh } = useRefreshData();
 
@@ -90,8 +138,44 @@ export default function Custos() {
     queryFn: () => fretesService.listarFretes(),
   });
 
+  // Query para listar fretes PENDENTES (sem pagamento)
+  const { data: fretesPendentesResponse } = useQuery<ApiResponse<Frete[]>>({
+    queryKey: ["fretes", "pendentes"],
+    queryFn: () => fretesService.listarFretesPendentes(),
+  });
+
   const custos: Custo[] = custosResponse?.data || [];
   const fretes = fretesResponse?.data || [];
+  const fretesPendentes = (() => {
+    const rawData = fretesPendentesResponse?.data || [];
+    // O backend retorna um array de agrupamentos por proprietario/motorista
+    // Ex: { proprietario_id: X, fretes: [...] }
+    return Array.isArray(rawData) ? rawData.flatMap((group: any) => group.fretes ? group.fretes : [group]) : [];
+  })();
+
+  const fretesDisponiveisParaCusto = (() => {
+    const isSemPagamento = (item: Frete) => {
+      const pagamentoId = (item as any)?.pagamento_id ?? (item as any)?.pagamentoId;
+      return pagamentoId === null || pagamentoId === undefined || String(pagamentoId).trim() === "";
+    };
+
+    const isFreteValido = (item: Frete) =>
+      !!item &&
+      !!String(item.id || "").trim() &&
+      !!(item.origem || item.destino || item.caminhao_placa || item.motorista_nome || item.proprietario_nome);
+
+    const dedupeById = (items: Frete[]) => {
+      const seen = new Set<string>();
+      return items.filter((item) => {
+        const id = String(item.id || "").trim();
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    };
+
+    return dedupeById((fretesPendentes || []).filter((item) => isFreteValido(item) && isSemPagamento(item)));
+  })();
 
   // Hook para filtro de período
   const {
@@ -252,16 +336,16 @@ export default function Custos() {
     setIsModalOpen(true);
   };
 
-    // Abrir modal de edição quando rota /custos/editar/:id for acessada
-    const custosParams = useParams();
-    useEffect(() => {
-      const idParam = custosParams.id;
-      if (!idParam) return;
-      if (!isLoading && custos.length > 0) {
-        const found = custos.find((c) => String(c.id) === String(idParam));
-        if (found) handleOpenEditModal(found);
-      }
-    }, [custosParams.id, isLoading, custos]);
+  // Abrir modal de edição quando rota /custos/editar/:id for acessada
+  const custosParams = useParams();
+  useEffect(() => {
+    const idParam = custosParams.id;
+    if (!idParam) return;
+    if (!isLoading && custos.length > 0) {
+      const found = custos.find((c) => String(c.id) === String(idParam));
+      if (found) handleOpenEditModal(found);
+    }
+  }, [custosParams.id, isLoading, custos]);
 
   const handleOpenEditModal = (custo: Custo) => {
     setEditingCusto(custo);
@@ -310,11 +394,11 @@ export default function Custos() {
     }
 
     // Gerar descrição automática se não houver
-    const descricaoAuto = formData.descricao || 
+    const descricaoAuto = formData.descricao ||
       (formData.tipo === "combustivel" ? `Abastecimento - ${formData.tipo_combustivel || 'combustível'}` :
-       formData.tipo === "pedagio" ? "Pedágio" :
-       formData.tipo === "manutencao" ? "Manutenção" :
-       "Outros custos");
+        formData.tipo === "pedagio" ? "Pedágio" :
+          formData.tipo === "manutencao" ? "Manutenção" :
+            "Outros custos");
 
     const payload: CriarCustoPayload = {
       frete_id: formData.frete_id,
@@ -433,12 +517,12 @@ export default function Custos() {
   };
 
   // Verificar se há filtros ativos
-  const hasActiveFilters = 
-    search !== "" || 
-    tipoFilter !== "all" || 
-    motoristaFilter !== "all" || 
+  const hasActiveFilters =
+    search !== "" ||
+    tipoFilter !== "all" ||
+    motoristaFilter !== "all" ||
     comprovanteFilter !== "all" ||
-    dateFrom !== undefined || 
+    dateFrom !== undefined ||
     dateTo !== undefined;
 
   // Lista única de motoristas
@@ -451,19 +535,19 @@ export default function Custos() {
       String(custo.frete_id || "").toLowerCase().includes(q) ||
       String(custo.descricao || "").toLowerCase().includes(q) ||
       String(custo.motorista || "").toLowerCase().includes(q);
-    
+
     // Filtro de tipo
     const matchesTipo = tipoFilter === "all" || custo.tipo === tipoFilter;
-    
+
     // Filtro de motorista
     const matchesMotorista = motoristaFilter === "all" || custo.motorista === motoristaFilter;
-    
+
     // Filtro de comprovante
-    const matchesComprovante = 
-      comprovanteFilter === "all" || 
+    const matchesComprovante =
+      comprovanteFilter === "all" ||
       (comprovanteFilter === "com" && custo.comprovante) ||
       (comprovanteFilter === "sem" && !custo.comprovante);
-    
+
     // Filtro de data
     let matchesDate = true;
     if (dateFrom || dateTo) {
@@ -475,7 +559,7 @@ export default function Custos() {
         if (dateTo && custoDate > dateTo) matchesDate = false;
       }
     }
-    
+
     return matchesSearch && matchesTipo && matchesMotorista && matchesComprovante && matchesDate;
   });
 
@@ -522,26 +606,24 @@ export default function Custos() {
       key: "frete_id",
       header: "Frete",
       render: (item: Custo) => {
-        const related = fretes.find(f => String(f.id) === String(item.frete_id) || String(f.id) === String(item.frete_id));
-        const displayId = related ? related.id : item.frete_id;
-        const driver = item.motorista || (related ? related.motorista_nome || "" : "");
+        const related = fretes.find(f => String(f.id) === String(item.frete_id));
+        const codigoFrete = item.codigo_frete || related?.codigo_frete || getFreteCodeFallback(item.frete_id);
+        const motorista = item.motorista || related?.motorista_nome || "—";
+
         return (
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono font-bold text-primary">{displayId}</span>
-            </div>
-            {driver && <p className="text-xs text-muted-foreground mt-0.5">{shortName(driver)}</p>}
+            <p className="font-mono text-sm text-primary">{codigoFrete || "—"}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">{motorista}</p>
           </div>
         );
       },
     },
-    { 
-      key: "descricao", 
+    {
+      key: "descricao",
       header: "Descrição",
       render: (item: Custo) => (
         <div>
-          <p className="font-medium">{item.descricao}</p>
-          <p className="text-xs text-muted-foreground">{shortName(item.motorista)}</p>
+          <p className="font-medium">{item.descricao || <span className="text-muted-foreground italic">—</span>}</p>
         </div>
       ),
     },
@@ -602,6 +684,36 @@ export default function Custos() {
       </MainLayout>
     );
   }
+
+  const selectedFrete = selectedCusto
+    ? fretes.find((frete) => {
+      const custoRef = normalizeFreteRef(selectedCusto.frete_id);
+      const freteId = normalizeFreteRef(frete.id);
+      const freteCodigo = normalizeFreteRef(frete.codigo_frete);
+      return custoRef === freteId || (Boolean(freteCodigo) && custoRef === freteCodigo);
+    })
+    : null;
+
+  const selectedFreteCodigo = selectedCusto
+    ? formatarCodigoFrete(
+      selectedCusto.codigo_frete || selectedFrete?.codigo_frete || selectedCusto.frete_id,
+      selectedFrete?.data_frete || selectedCusto.data
+    )
+    : "";
+
+  const selectedFreteMotorista = selectedCusto
+    ? selectedCusto.motorista || selectedFrete?.motorista_nome || "—"
+    : "—";
+
+  const selectedFreteCaminhao = selectedCusto
+    ? selectedCusto.caminhao || selectedFrete?.caminhao_placa || "—"
+    : "—";
+
+  const selectedFreteRota = selectedCusto
+    ? selectedCusto.rota || (selectedFrete?.origem && selectedFrete?.destino
+      ? `${selectedFrete.origem} → ${selectedFrete.destino}`
+      : "—")
+    : "—";
 
   return (
     <MainLayout title="Custos" subtitle="Gestão de custos operacionais">
@@ -934,7 +1046,7 @@ export default function Custos() {
             </div>
             <DataTable<Custo>
               columns={columns}
-              data={ (showAllCombustivel ? combustivelItems : combustivelItems.slice(0,7)) }
+              data={(showAllCombustivel ? combustivelItems : combustivelItems.slice(0, 7))}
               onRowClick={handleRowClick}
               emptyMessage="Nenhum custo de combustível"
             />
@@ -950,105 +1062,105 @@ export default function Custos() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-                <>
-                  {/* Mobile Pagination */}
-                  <div className="mt-6 md:hidden">
-                    <div className="flex items-center justify-between mb-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                        disabled={currentPage === 1}
-                      >
-                        Anterior
-                      </Button>
-                      <span className="text-sm text-muted-foreground font-medium">
-                        {currentPage} / {totalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                        disabled={currentPage === totalPages}
-                      >
-                        Próxima
-                      </Button>
-                    </div>
-                    <p className="text-xs text-center text-muted-foreground">
-                      {filteredData.length} registros
-                    </p>
+              <>
+                {/* Mobile Pagination */}
+                <div className="mt-6 md:hidden">
+                  <div className="flex items-center justify-between mb-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Anterior
+                    </Button>
+                    <span className="text-sm text-muted-foreground font-medium">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Próxima
+                    </Button>
                   </div>
+                  <p className="text-xs text-center text-muted-foreground">
+                    {filteredData.length} registros
+                  </p>
+                </div>
 
-                  {/* Desktop Pagination */}
-                  <div className="mt-6 hidden md:flex justify-center">
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setCurrentPage(Math.max(1, currentPage - 1));
-                            }}
-                            className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                          />
-                        </PaginationItem>
+                {/* Desktop Pagination */}
+                <div className="mt-6 hidden md:flex justify-center">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setCurrentPage(Math.max(1, currentPage - 1));
+                          }}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
 
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                          const isCurrentPage = page === currentPage;
-                          const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        const isCurrentPage = page === currentPage;
+                        const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
 
-                          if (!isVisible) {
-                            return null;
-                          }
+                        if (!isVisible) {
+                          return null;
+                        }
 
-                          if (page === 2 && currentPage > 3) {
-                            return (
-                              <PaginationItem key="ellipsis-start">
-                                <PaginationEllipsis />
-                              </PaginationItem>
-                            );
-                          }
-
-                          if (page === totalPages - 1 && currentPage < totalPages - 2) {
-                            return (
-                              <PaginationItem key="ellipsis-end">
-                                <PaginationEllipsis />
-                              </PaginationItem>
-                            );
-                          }
-
+                        if (page === 2 && currentPage > 3) {
                           return (
-                            <PaginationItem key={page}>
-                              <PaginationLink
-                                href="#"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  setCurrentPage(page);
-                                }}
-                                isActive={isCurrentPage}
-                              >
-                                {page}
-                              </PaginationLink>
+                            <PaginationItem key="ellipsis-start">
+                              <PaginationEllipsis />
                             </PaginationItem>
                           );
-                        })}
+                        }
 
-                        <PaginationItem>
-                          <PaginationNext
-                            href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setCurrentPage(Math.min(totalPages, currentPage + 1));
-                            }}
-                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
-                  </div>
-                </>
-              )}
+                        if (page === totalPages - 1 && currentPage < totalPages - 2) {
+                          return (
+                            <PaginationItem key="ellipsis-end">
+                              <PaginationEllipsis />
+                            </PaginationItem>
+                          );
+                        }
+
+                        return (
+                          <PaginationItem key={page}>
+                            <PaginationLink
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setCurrentPage(page);
+                              }}
+                              isActive={isCurrentPage}
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        );
+                      })}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setCurrentPage(Math.min(totalPages, currentPage + 1));
+                          }}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              </>
+            )}
           </Card>
         )}
 
@@ -1078,7 +1190,7 @@ export default function Custos() {
             </div>
             <DataTable<Custo>
               columns={columns}
-              data={ (showAllManutencao ? manutencaoItems : manutencaoItems.slice(0,7)) }
+              data={(showAllManutencao ? manutencaoItems : manutencaoItems.slice(0, 7))}
               onRowClick={handleRowClick}
               emptyMessage="Nenhum custo de manutenção"
             />
@@ -1092,47 +1204,47 @@ export default function Custos() {
           </Card>
         )}
 
-            {/* Pedágios */}
-            {pedagioItems.length > 0 && (
-              <Card className="overflow-hidden">
-                <div className="bg-gradient-to-r from-sky-50/20 to-sky-100/10 border-b border-sky-200 px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-sky-100">
-                        <Truck className="h-4 w-4 text-sky-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-base">Pedágios</h3>
-                        <p className="text-xs text-muted-foreground">
-                          {pedagioItems.length} lançamento{pedagioItems.length > 1 ? 's' : ''}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Total</p>
-                      <p className="text-lg font-bold text-sky-600">
-                        R$ {pedagioItems.reduce((acc, c) => acc + toNumber(c.valor), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      </p>
-                    </div>
+        {/* Pedágios */}
+        {pedagioItems.length > 0 && (
+          <Card className="overflow-hidden">
+            <div className="bg-gradient-to-r from-sky-50/20 to-sky-100/10 border-b border-sky-200 px-3 py-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-sky-100">
+                    <Truck className="h-4 w-4 text-sky-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-base">Pedágios</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {pedagioItems.length} lançamento{pedagioItems.length > 1 ? 's' : ''}
+                    </p>
                   </div>
                 </div>
-                <DataTable<Custo>
-                  columns={columns}
-                  data={ (showAllPedagio ? pedagioItems : pedagioItems.slice(0,7)) }
-                  onRowClick={handleRowClick}
-                  emptyMessage="Nenhum pedágio"
-                />
-                {pedagioItems.length > 7 && (
-                  <div className="p-3 border-t flex justify-end">
-                    <Button variant="ghost" size="sm" onClick={() => setShowAllPedagio((s) => !s)}>
-                      {showAllPedagio ? `Ver menos` : `Ver todos (${pedagioItems.length})`}
-                    </Button>
-                  </div>
-                )}
-              </Card>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Total</p>
+                  <p className="text-lg font-bold text-sky-600">
+                    R$ {pedagioItems.reduce((acc, c) => acc + toNumber(c.valor), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <DataTable<Custo>
+              columns={columns}
+              data={(showAllPedagio ? pedagioItems : pedagioItems.slice(0, 7))}
+              onRowClick={handleRowClick}
+              emptyMessage="Nenhum pedágio"
+            />
+            {pedagioItems.length > 7 && (
+              <div className="p-3 border-t flex justify-end">
+                <Button variant="ghost" size="sm" onClick={() => setShowAllPedagio((s) => !s)}>
+                  {showAllPedagio ? `Ver menos` : `Ver todos (${pedagioItems.length})`}
+                </Button>
+              </div>
             )}
+          </Card>
+        )}
 
-            {/* Outros */}
+        {/* Outros */}
         {outrosItems.length > 0 && (
           <Card className="overflow-hidden">
             <div className="bg-gradient-to-r from-slate-500/20 to-gray-500/10 border-b border-slate-300 dark:border-slate-800 px-3 py-2">
@@ -1158,7 +1270,7 @@ export default function Custos() {
             </div>
             <DataTable<Custo>
               columns={columns}
-              data={ (showAllOutros ? outrosItems : outrosItems.slice(0,7)) }
+              data={(showAllOutros ? outrosItems : outrosItems.slice(0, 7))}
               onRowClick={handleRowClick}
               emptyMessage="Nenhum outro custo"
             />
@@ -1295,7 +1407,7 @@ export default function Custos() {
                       R$ {selectedCusto.valor.toLocaleString("pt-BR")}
                     </p>
                   </div>
-                  <Badge 
+                  <Badge
                     variant={selectedCusto.comprovante ? "success" : "neutral"}
                     className="text-sm px-3 py-1"
                   >
@@ -1318,9 +1430,22 @@ export default function Custos() {
                     <FileText className="h-4 w-4" />
                     <span>Frete</span>
                   </div>
-                  <p className="font-mono font-bold text-primary text-lg">
-                    {selectedCusto.frete_id}
-                  </p>
+                  {selectedFrete ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDetailsOpen(false);
+                        navigate("/fretes");
+                      }}
+                      className="font-mono font-bold text-primary text-lg underline underline-offset-4 hover:opacity-80 transition-opacity"
+                    >
+                      {selectedFreteCodigo || "—"}
+                    </button>
+                  ) : (
+                    <p className="font-mono font-bold text-primary text-lg">
+                      {selectedFreteCodigo || "—"}
+                    </p>
+                  )}
                 </div>
 
                 {/* Data */}
@@ -1338,7 +1463,7 @@ export default function Custos() {
                     <User className="h-4 w-4" />
                     <span>Motorista</span>
                   </div>
-                  <p className="font-semibold text-lg">{selectedCusto.motorista}</p>
+                  <p className="font-semibold text-lg">{selectedFreteMotorista}</p>
                 </div>
 
                 {/* Caminhão */}
@@ -1347,7 +1472,7 @@ export default function Custos() {
                     <Truck className="h-4 w-4" />
                     <span>Caminhão</span>
                   </div>
-                  <p className="font-mono font-bold text-lg">{selectedCusto.caminhao}</p>
+                  <p className="font-mono font-bold text-lg">{selectedFreteCaminhao}</p>
                 </div>
               </div>
 
@@ -1359,7 +1484,7 @@ export default function Custos() {
                   <MapPin className="h-4 w-4" />
                   <span>Rota</span>
                 </div>
-                <p className="font-semibold text-lg">{selectedCusto.rota}</p>
+                <p className="font-semibold text-lg">{selectedFreteRota}</p>
               </div>
 
               {/* Descrição */}
@@ -1466,7 +1591,7 @@ export default function Custos() {
               <Select
                 value={formData.frete_id ?? 'none'}
                 onValueChange={(value) => {
-                  setFormData({ ...formData, frete_id: value === 'none' ? null : value });
+                  setFormData({ ...formData, frete_id: value === 'none' ? "" : value });
                   clearFormError("frete_id");
                 }}
                 onOpenChange={(open) => {
@@ -1476,15 +1601,15 @@ export default function Custos() {
                 <SelectTrigger className={cn(fieldErrorClass(formErrors.frete_id))}>
                   <SelectValue placeholder="Selecione o frete" />
                 </SelectTrigger>
-                <SelectContent>
-                  {fretes.length === 0 ? (
+                <SelectContent className="max-h-64 overflow-y-auto">
+                  {(editingCusto ? fretes : fretesDisponiveisParaCusto).length === 0 ? (
                     <SelectItem value="none" disabled>
-                      Nenhum frete disponivel
+                      {editingCusto ? "Nenhum frete disponível" : "Nenhum frete pendente de pagamento"}
                     </SelectItem>
                   ) : (
-                    fretes.map((frete) => (
+                    (editingCusto ? fretes : fretesDisponiveisParaCusto).map((frete) => (
                       <SelectItem key={frete.id} value={frete.id}>
-                        {frete.id} - {frete.destino}
+                        {formatFreteSelect(frete)}
                       </SelectItem>
                     ))
                   )}
@@ -1520,7 +1645,7 @@ export default function Custos() {
               </Select>
               <FieldError message={formErrors.tipo} />
             </div>
-            
+
             {/* Campos específicos para Combustível */}
             {formData.tipo === "combustivel" && (
               <Card className="p-4 bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800">
@@ -1529,14 +1654,14 @@ export default function Custos() {
                     <Fuel className="h-5 w-5 text-amber-600" />
                     <h4 className="font-semibold text-amber-900 dark:text-amber-100">Informações do Abastecimento</h4>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="litros">Litros Abastecidos *</Label>
-                      <Input 
-                        id="litros" 
-                        type="number" 
-                        placeholder="Ex: 150" 
+                      <Input
+                        id="litros"
+                        type="number"
+                        placeholder="Ex: 150"
                         value={formData.litros ?? ""}
                         onChange={(e) => {
                           setFormData({ ...formData, litros: Number(e.target.value) });
@@ -1573,7 +1698,7 @@ export default function Custos() {
                       <FieldError message={formErrors.tipo_combustivel} />
                     </div>
                   </div>
-                  
+
                   {formData.litros && formData.tipo_combustivel && (
                     <Card className="p-3 bg-white dark:bg-slate-950">
                       <p className="text-sm text-muted-foreground">

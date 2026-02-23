@@ -2,6 +2,15 @@ import api from "@/api/axios";
 import { isAxiosError } from "axios";
 import type { Custo, CriarCustoPayload, ApiResponse } from "@/types";
 
+type CriarCustosEmLotePayload = {
+  frete_id: string;
+  custos: Array<
+    Omit<CriarCustoPayload, "frete_id"> & {
+      frete_id?: string;
+    }
+  >;
+};
+
 const listarCustos = async (params?: { page?: number; limit?: number }): Promise<ApiResponse<Custo[]>> => {
   try {
     const { page = 1, limit = 50 } = params ?? {};
@@ -41,7 +50,9 @@ const obterCusto = async (id: string): Promise<ApiResponse<Custo>> => {
   }
 };
 
-const criarCusto = async (payload: CriarCustoPayload): Promise<ApiResponse<Custo>> => {
+const criarCusto = async (
+  payload: CriarCustoPayload | CriarCustosEmLotePayload
+): Promise<ApiResponse<Custo | { ids?: string[]; totalCriados?: number; frete_id?: string }>> => {
   try {
     const res = await api.post("/custos", payload);
     return { success: true, data: res.data.data || res.data, status: res.status };

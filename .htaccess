@@ -1,3 +1,49 @@
+# 🔒 1. FORÇAR HTTPS
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# 🛡️ 2. SEGURANÇA - Bloquear acesso a arquivos sensíveis
+Options -Indexes
+<FilesMatch "(\.env|\.env\.local|\.git|\.gitignore|package\.json|package-lock\.json|tsconfig|vite\.config|\.map|README\.md)$">
+    Deny from all
+</FilesMatch>
+
+<DirectoryMatch "(node_modules|src|database|\.git)">
+    Deny from all
+</DirectoryMatch>
+
+# ⚡ 3. COMPRESSÃO (Gzip) - Melhora muito a velocidade
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+</IfModule>
+
+# 🛡️ 4. HEADERS DE SEGURANÇA
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "DENY"
+    Header always set X-Content-Type-Options "nosniff"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    Header set X-Permitted-Cross-Domain-Policies "none"
+    Header set Referrer-Policy "no-referrer-when-downgrade"
+    
+    # Cache para assets (JS/CSS)
+    <FilesMatch "\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+</IfModule>
+
+# 🔄 5. REACT ROUTER REWRITE (SPA)
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /

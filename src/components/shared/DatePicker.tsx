@@ -12,6 +12,7 @@ type DatePickerProps = {
   placeholder?: string;
   buttonClassName?: string;
   disabled?: boolean;
+  disabledDays?: (date: Date) => boolean;
   onOpenChange?: (open: boolean) => void;
 };
 
@@ -22,6 +23,7 @@ export function DatePicker({
   placeholder = "Selecionar",
   buttonClassName,
   disabled,
+  disabledDays,
   onOpenChange,
 }: DatePickerProps) {
   return (
@@ -42,7 +44,7 @@ export function DatePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
-        <Calendar mode="single" selected={value} onSelect={onChange} initialFocus />
+        <Calendar mode="single" selected={value} onSelect={onChange} initialFocus disabled={disabledDays} />
       </PopoverContent>
     </Popover>
   );

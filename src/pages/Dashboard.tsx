@@ -357,14 +357,16 @@ export default function Dashboard() {
     { month: "Jan", lucro: kpisIntegrados.janeiro.totalResultado },
   ];
 
-  // Calcular ranking de motoristas por receita
+  // Calcular ranking de favorecidos/proprietários por receita
   const driversRanking = useMemo(() => {
     const motoristasReceitaMap: Record<string, { name: string; revenue: number; trips: number }> = {};
     
     fretes.forEach((frete: Record<string, any>) => {
-      // Suportar campos do backend (motorista_nome) e simulados (motorista)
-      const motoristaNome = frete.motorista_nome || frete.motorista || "Desconhecido";
-      const motoristaId = frete.motorista_id || frete.motoristaId || motoristaNome;
+      // Suportar aliases do backend (proprietario_*) e legados (motorista_*)
+      const motoristaNome =
+        frete.proprietario_nome || frete.motorista_nome || frete.motorista || "Desconhecido";
+      const motoristaId =
+        frete.proprietario_id || frete.motorista_id || frete.motoristaId || motoristaNome;
       const receita = Number(frete.receita || 0);
       
       if (!motoristasReceitaMap[motoristaId]) {

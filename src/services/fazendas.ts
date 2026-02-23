@@ -6,17 +6,67 @@ type FazendaBackend = Fazenda & {
   nome?: string;
   localizacao?: string;
   estado?: "SP" | "MS" | "MT";
+  codigo?: string;
+  codigoFazenda?: string;
 };
 
-const normalizeFazendaFromBackend = (item: FazendaBackend): Fazenda => ({
+const getAnoCodigo = (item?: Partial<FazendaBackend>) => {
+  const rawDate = item?.created_at || item?.updated_at;
+  const parsed = rawDate ? new Date(rawDate) : new Date();
+  return Number.isNaN(parsed.getTime()) ? new Date().getFullYear() : parsed.getFullYear();
+};
+
+const formatCodigoFazenda = (value: string | number, ano: number) => {
+  const clean = String(value).trim();
+  if (!clean) return "";
+
+  const officialMatch = clean.match(/^FAZ-(\d{4})-(\d{1,})$/i);
+  if (officialMatch) {
+    return `FAZ-${officialMatch[1]}-${officialMatch[2].padStart(3, "0")}`;
+  }
+
+  const legacyPrefixMatch = clean.match(/^FZ-(\d{1,})$/i);
+  if (legacyPrefixMatch) {
+    return `FAZ-${ano}-${legacyPrefixMatch[1].padStart(3, "0")}`;
+  }
+
+  if (/^\d+$/.test(clean)) {
+    return `FAZ-${ano}-${clean.padStart(3, "0")}`;
+  }
+
+  return clean.toUpperCase();
+};
+
+const getCodigoFazendaFallback = (item: FazendaBackend, index?: number) => {
+  const ano = getAnoCodigo(item);
+  const backendCodigo =
+    item.codigo_fazenda ?? item.codigoFazenda ?? item.codigo ?? "";
+
+  if (String(backendCodigo).trim()) {
+    return formatCodigoFazenda(String(backendCodigo), ano);
+  }
+
+  if (item.id && /^\d+$/.test(String(item.id))) {
+    return formatCodigoFazenda(String(item.id), ano);
+  }
+
+  if (typeof index === "number") {
+    return `FAZ-${ano}-${String(index + 1).padStart(3, "0")}`;
+  }
+
+  return `FAZ-${ano}-000`;
+};
+
+const normalizeFazendaFromBackend = (item: FazendaBackend, index?: number): Fazenda => ({
   ...item,
+  codigo_fazenda: getCodigoFazendaFallback(item, index),
   fazenda: item.fazenda ?? item.nome ?? "",
   estado: item.estado ?? (item.localizacao as "SP" | "MS" | "MT" | undefined) ?? null,
 });
 
 const normalizeListResponse = (data: unknown): Fazenda[] => {
   if (!Array.isArray(data)) return [];
-  return data.map((item) => normalizeFazendaFromBackend(item as FazendaBackend));
+  return data.map((item, index) => normalizeFazendaFromBackend(item as FazendaBackend, index));
 };
 
 const normalizeSingleResponse = (data: unknown): Fazenda | null => {

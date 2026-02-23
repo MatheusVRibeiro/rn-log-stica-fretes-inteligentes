@@ -88,12 +88,18 @@ export type FreteStatus = "em_transito" | "concluido" | "pendente" | "cancelado"
 
 export interface Frete {
   id: string;
+  codigo_frete?: string | null;
   origem: string;
   destino: string;
   motorista_id: string;
   motorista_nome: string;
+  proprietario_id?: string | null;
+  proprietario_nome?: string | null;
+  proprietario_tipo?: "proprio" | "terceirizado" | "agregado" | null;
   caminhao_id: string;
   caminhao_placa: string;
+  caminhao_ids?: string[];
+  caminhao_placas?: string[];
   fazenda_id?: string | null;
   fazenda_nome?: string | null;
   mercadoria: string;
@@ -119,6 +125,8 @@ export interface CriarFretePayload {
   destino: string;
   motorista_id: string;
   motorista_nome: string;
+  proprietario_id?: string;
+  proprietario_nome?: string;
   caminhao_id: string;
   caminhao_placa: string;
   fazenda_id?: string;
@@ -142,6 +150,7 @@ export interface ApiResponse<T = any> {
   success: boolean;
   data: T | null;
   message?: string;
+  field?: string;
   meta?: {
     page?: number;
     limit?: number;
@@ -200,6 +209,7 @@ export interface CriarFazendaPayload {
 export interface Custo {
   id: string;
   frete_id: string;
+  codigo_frete?: string | null;
   tipo: "combustivel" | "pedagio" | "manutencao" | "outros";
   descricao: string;
   valor: number;
@@ -230,14 +240,18 @@ export interface CriarCustoPayload {
 
 export interface Pagamento {
   id: string;
+  codigo_pagamento?: string | null;
   motorista_id: string;
   motorista_nome: string;
+  proprietario_id?: string | null;
+  proprietario_nome?: string | null;
   periodo_fretes: string;
   quantidade_fretes: number;
   fretes_incluidos?: string | null;
   total_toneladas: number;
   valor_por_tonelada: number;
   valor_total: number;
+  tipo_relatorio?: "GUIA_INTERNA" | "PAGAMENTO_TERCEIRO" | null;
   data_pagamento: string;
   status: "pendente" | "processando" | "pago" | "cancelado";
   metodo_pagamento: "pix" | "transferencia_bancaria";
@@ -253,6 +267,8 @@ export interface CriarPagamentoPayload {
   id?: string;
   motorista_id: string;
   motorista_nome: string;
+  proprietario_id?: string;
+  proprietario_nome?: string;
   periodo_fretes: string;
   quantidade_fretes: number;
   fretes_incluidos?: string;
@@ -261,7 +277,7 @@ export interface CriarPagamentoPayload {
   valor_total: number;
   data_pagamento: string;
   status?: "pendente" | "processando" | "pago" | "cancelado";
-  metodo_pagamento: "pix" | "transferencia_bancaria";
+  metodo_pagamento?: "pix" | "transferencia_bancaria";
   comprovante_nome?: string;
   comprovante_url?: string;
   observacoes?: string;
@@ -270,6 +286,8 @@ export interface CriarPagamentoPayload {
 export interface AtualizarPagamentoPayload {
   motorista_id?: string;
   motorista_nome?: string;
+  proprietario_id?: string;
+  proprietario_nome?: string;
   periodo_fretes?: string;
   quantidade_fretes?: number;
   fretes_incluidos?: string;

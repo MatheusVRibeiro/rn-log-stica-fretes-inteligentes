@@ -31,7 +31,14 @@ export async function criarCaminhao(payload: CriarCaminhaoPayload): Promise<ApiR
     return { success: true, data: res.data.data || res.data, status: res.status };
   } catch (err: any) {
     console.error("Erro em criarCaminhao:", err?.response?.data ?? err);
-    const message = err?.response?.data?.message ?? err?.message ?? "Erro ao criar caminhão";
+    const errorDetail = err?.response?.data?.error;
+    const rawMessage = err?.response?.data?.message ?? err?.message;
+    let message = rawMessage ?? "Erro ao criar caminhão";
+
+    if (typeof errorDetail === "string" && /duplicate entry/i.test(errorDetail) && /placa/i.test(errorDetail)) {
+      message = "Placa já cadastrada. Informe uma placa diferente.";
+    }
+
     const status = err?.response?.status;
     return { success: false, data: null, message, status };
   }
@@ -44,7 +51,13 @@ export async function atualizarCaminhao(id: string, payload: Partial<CriarCaminh
   } catch (err: unknown) {
     let message = "Erro ao atualizar caminhão";
     if (isAxiosError(err)) {
+      const errorDetail = (err.response?.data as any)?.error;
       message = err.response?.data?.message ?? err.message ?? message;
+
+      if (typeof errorDetail === "string" && /duplicate entry/i.test(errorDetail) && /placa/i.test(errorDetail)) {
+        message = "Placa já cadastrada. Informe uma placa diferente.";
+      }
+
       const status = err.response?.status;
       return { success: false, data: null, message, status };
     } else if (err instanceof Error) {

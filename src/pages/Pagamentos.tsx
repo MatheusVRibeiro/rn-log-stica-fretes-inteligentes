@@ -71,17 +71,20 @@ import {
 import { format, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, shortName } from "@/lib/utils";
+import { formatarCodigoFrete } from "@/utils/formatters";
 import { toast } from "sonner";
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
 
 // PDF helpers
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { ApiResponse, Pagamento, Motorista, Frete, AtualizarPagamentoPayload, CriarPagamentoPayload } from "@/types";
+import { ApiResponse, Pagamento, Motorista, Frete, AtualizarPagamentoPayload, CriarPagamentoPayload, Fazenda } from "@/types";
 import pagamentosService from "@/services/pagamentos";
 import motoristasService from "@/services/motoristas";
 import * as fretesService from "@/services/fretes";
 import custosService from "@/services/custos";
+import fazendasService from "@/services/fazendas";
+import { exportarGuiaPagamentoIndividual, PagamentoPDFParams } from "@/utils/pdf/pagamentos-pdf";
 import { usePeriodoFilter } from "@/hooks/usePeriodoFilter";
 // locale imported above
 /*
@@ -98,6 +101,7 @@ interface PagamentoMotorista {
   id: string;
   motoristaId: string;
   motoristaNome: string;
+  tipoRelatorio?: "GUIA_INTERNA" | "PAGAMENTO_TERCEIRO";
   dataFrete: string;
   toneladas: number;
   fretes: number;
@@ -135,6 +139,30 @@ const statusConfig = {
   cancelado: { label: "Cancelado", variant: "cancelled" as const },
 };
 
+const getFavorecidoId = (item: { proprietario_id?: string | null; motorista_id?: string | null }) =>
+  String(item.proprietario_id || item.motorista_id || "");
+
+const getFavorecidoNome = (item: { proprietario_nome?: string | null; motorista_nome?: string | null }) =>
+  String(item.proprietario_nome || item.motorista_nome || "Favorecido");
+
+const parseFretesIncluidos = (value?: string | null): string[] =>
+  value
+    ? value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+    : [];
+
+const uniqueById = <T extends { id: string | number }>(items: T[]): T[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = String(item.id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 export default function Pagamentos() {
   const queryClient = useQueryClient();
 
@@ -158,10 +186,28 @@ export default function Pagamentos() {
     queryFn: () => custosService.listarCustos(),
   });
 
+  const { data: fazendasResponse } = useQuery<ApiResponse<Fazenda[]>>({
+    queryKey: ["fazendas"],
+    queryFn: () => fazendasService.listarFazendas(),
+  });
+
   const pagamentosApi: Pagamento[] = pagamentosResponse?.data || [];
   const motoristasApi: Motorista[] = motoristasResponse?.data || [];
   const fretesApi: Frete[] = fretesResponse?.data || [];
   const custosApi: any[] = custosResponse?.data || [];
+  const fazendasApi: Fazenda[] = fazendasResponse?.data || [];
+
+  const getFazendaCodigoByFrete = (frete: Frete) => {
+    const byId = frete.fazenda_id
+      ? fazendasApi.find((f) => String(f.id) === String(frete.fazenda_id))
+      : undefined;
+    if (byId?.codigo_fazenda) return byId.codigo_fazenda;
+
+    const byNome = frete.fazenda_nome
+      ? fazendasApi.find((f) => String(f.fazenda).toUpperCase() === String(frete.fazenda_nome).toUpperCase())
+      : undefined;
+    return byNome?.codigo_fazenda || "";
+  };
 
   // Mapear custos da API para o formato usado no componente
   const custosAdicionaisData: CustoAdicional[] = useMemo(() => {
@@ -180,11 +226,35 @@ export default function Pagamentos() {
     return format(parsed, "dd/MM/yyyy", { locale: ptBR });
   };
 
+  // Formata periodo_fretes removendo duplicação de datas (ex: "19-19/02/2026" → "19/02/2026")
+  const formatPeriodoFretes = (periodo: string): string => {
+    if (!periodo) return "";
+    // Se tem padrão "DD-DD/MM/YYYY" onde os dois DDs são iguais, remover o primeiro
+    const match = periodo.match(/^(\d{2})-(\d{2})\/(\d{2}\/\d{4})$/);
+    if (match && match[1] === match[2]) {
+      return `${match[2]}/${match[3]}`;
+    }
+    // Se tem padrão "DD-DD de ..." onde os dois DDs são iguais
+    const match2 = periodo.match(/^(\d{2}) a (\d{2}) de (.+)$/);
+    if (match2 && match2[1] === match2[2]) {
+      return `${match2[2]} de ${match2[3]}`;
+    }
+    return periodo;
+  };
+
   const toApiDate = (value: string) => {
     if (!value) return "";
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
     const parsed = parse(value, "dd/MM/yyyy", new Date());
     return Number.isNaN(parsed.getTime()) ? value : format(parsed, "yyyy-MM-dd");
+  };
+
+  const parseBRDateToLocalDate = (value?: string) => {
+    if (!value) return undefined;
+    const [day, month, year] = String(value).split("/").map(Number);
+    if (!day || !month || !year) return undefined;
+    const localDate = new Date(year, month - 1, day);
+    return Number.isNaN(localDate.getTime()) ? undefined : localDate;
   };
 
   // Hook para filtro de período
@@ -205,26 +275,25 @@ export default function Pagamentos() {
   const pagamentosFiltradosTransformados = useMemo(
     () =>
       pagamentosFiltrados.map((pagamento) => ({
-        id: pagamento.id,
-        motoristaId: pagamento.motorista_id,
-        motoristaNome: pagamento.motorista_nome,
-        dataFrete: pagamento.periodo_fretes,
+        id: pagamento.codigo_pagamento || pagamento.id || "SEM-ID",
+        motoristaId: getFavorecidoId(pagamento),
+        motoristaNome: getFavorecidoNome(pagamento),
+        tipoRelatorio: pagamento.tipo_relatorio || undefined,
+        dataFrete: formatPeriodoFretes(pagamento.periodo_fretes),
         toneladas: Number(pagamento.total_toneladas) || 0,
         fretes: Number(pagamento.quantidade_fretes) || 0,
         valorUnitarioPorTonelada: Number(pagamento.valor_por_tonelada) || 0,
         valorTotal: Number(pagamento.valor_total) || 0,
-        fretesSelecionados: pagamento.fretes_incluidos
-          ? pagamento.fretes_incluidos.split(",")
-          : [],
+        fretesSelecionados: parseFretesIncluidos(pagamento.fretes_incluidos),
         dataPagamento: formatDateBR(pagamento.data_pagamento),
         statusPagamento: pagamento.status,
         metodoPagamento: pagamento.metodo_pagamento,
         comprovante: pagamento.comprovante_nome
           ? {
-              nome: pagamento.comprovante_nome,
-              url: pagamento.comprovante_url || "",
-              datadoUpload: pagamento.comprovante_data_upload || "",
-            }
+            nome: pagamento.comprovante_nome,
+            url: pagamento.comprovante_url || "",
+            datadoUpload: pagamento.comprovante_data_upload || "",
+          }
           : undefined,
         observacoes: pagamento.observacoes || undefined,
       })),
@@ -251,9 +320,12 @@ export default function Pagamentos() {
     isPdf: boolean;
   } | null>(null);
   const [selectedFretes, setSelectedFretes] = useState<string[]>([]);
+  const [isInternalCostConfirmed, setIsInternalCostConfirmed] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = ITEMS_PER_PAGE;
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [autoEmitirGuia, setAutoEmitirGuia] = useState(true);
+
   const getComprovanteUrl = (url?: string) => {
     if (!url) return "";
     if (url.startsWith("http")) return url;
@@ -312,28 +384,52 @@ export default function Pagamentos() {
 
   const motoristas = useMemo(
     () =>
-      motoristasApi.map((motorista) => ({
-        id: motorista.id,
-        nome: motorista.nome,
-        tipoPagamento: motorista.tipo_pagamento || "pix",
-        chavePixTipo: motorista.chave_pix_tipo,
-        chavePix: motorista.chave_pix,
-        banco: motorista.banco,
-        agencia: motorista.agencia,
-        conta: motorista.conta,
-        tipoConta: motorista.tipo_conta,
-      })),
+      uniqueById(
+        motoristasApi.map((motorista) => ({
+          id: motorista.id,
+          nome: motorista.nome,
+          tipo: motorista.tipo,
+          tipoPagamento: motorista.tipo_pagamento || "pix",
+          chavePixTipo: motorista.chave_pix_tipo,
+          chavePix: motorista.chave_pix,
+          banco: motorista.banco,
+          agencia: motorista.agencia,
+          conta: motorista.conta,
+          tipoConta: motorista.tipo_conta,
+        }))
+      ),
     [motoristasApi]
   );
 
-  // Motoristas que possuem fretes pendentes (pagamento_id == null)
+  const resolveMotoristaById = (id?: string | null) => {
+    if (!id) return undefined;
+    const idString = String(id);
+    return (
+      motoristas.find((m) => String(m.id) === idString) ||
+      motoristasComPendentes.find((m) => String(m.id) === idString)
+    );
+  };
+
+  const motoristaSelecionado = resolveMotoristaById(editedPagamento.motoristaId);
+  const isInternalCostFlow = motoristaSelecionado?.tipo === "proprio";
+
+  // Motoristas que possuem fretes pendentes (pagamento_id == null/0)
   const motoristasComPendentes = useMemo(() => {
-    const pendingIds = new Set((fretesApi || []).filter(f => f.pagamento_id == null).map(f => f.motorista_id));
-    return motoristasApi
+    const pendentes = (fretesApi || []).filter(
+      (f) => f.pagamento_id == null || String(f.pagamento_id) === "0"
+    );
+    const pendingIds = new Set(
+      pendentes
+        .map((f) => getFavorecidoId(f))
+        .filter(Boolean)
+    );
+
+    const fromMotoristas = motoristasApi
       .filter((m) => pendingIds.has(m.id))
       .map((motorista) => ({
         id: motorista.id,
         nome: motorista.nome,
+        tipo: motorista.tipo,
         tipoPagamento: motorista.tipo_pagamento || "pix",
         chavePixTipo: motorista.chave_pix_tipo,
         chavePix: motorista.chave_pix,
@@ -342,13 +438,36 @@ export default function Pagamentos() {
         conta: motorista.conta,
         tipoConta: motorista.tipo_conta,
       }));
+
+    const existing = new Set(fromMotoristas.map((item) => item.id));
+    const fromFretesFallback = pendentes
+      .map((f) => ({ id: getFavorecidoId(f), nome: getFavorecidoNome(f), tipo: f.proprietario_tipo }))
+      .filter((f) => f.id && !existing.has(f.id))
+      .map((f) => ({
+        id: f.id,
+        nome: f.nome,
+        tipo: (f.tipo as Motorista["tipo"]) || "terceirizado",
+        tipoPagamento: "pix" as const,
+        chavePixTipo: undefined,
+        chavePix: undefined,
+        banco: undefined,
+        agencia: undefined,
+        conta: undefined,
+        tipoConta: undefined,
+      }));
+
+    return uniqueById([...fromMotoristas, ...fromFretesFallback]);
   }, [motoristasApi, fretesApi]);
 
   const fretesData = useMemo(
     () =>
-      fretesApi.map((frete) => ({
+      fretesApi.map((frete, index) => ({
         id: frete.id,
-        motoristaId: frete.motorista_id,
+        codigoFrete: formatarCodigoFrete(frete.codigo_frete || frete.id, frete.data_frete, index + 1),
+        codigoFreteRaw: String(frete.codigo_frete || ""),
+        motoristaId: getFavorecidoId(frete),
+        motoristaNome: getFavorecidoNome(frete),
+        proprietarioTipo: frete.proprietario_tipo,
         dataFrete: formatDateBR(frete.data_frete),
         rota: `${frete.origem} → ${frete.destino}`,
         toneladas: Number(frete.toneladas) || 0,
@@ -358,6 +477,51 @@ export default function Pagamentos() {
     [fretesApi]
   );
 
+  const normalizeFreteRef = (value: unknown) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+  const resolveFreteByRef = (ref: string) => {
+    const token = String(ref || "").trim();
+    if (!token) return undefined;
+    const tokenLower = token.toLowerCase();
+    const tokenNorm = normalizeFreteRef(token);
+
+    return fretesData.find((f) => {
+      const id = String(f.id || "").trim().toLowerCase();
+      const codigo = String(f.codigoFrete || "").trim().toLowerCase();
+      const codigoRaw = String((f as any).codigoFreteRaw || "").trim().toLowerCase();
+
+      if (id === tokenLower || codigo === tokenLower || codigoRaw === tokenLower) {
+        return true;
+      }
+
+      const idNorm = normalizeFreteRef(id);
+      const codigoNorm = normalizeFreteRef(codigo);
+      const codigoRawNorm = normalizeFreteRef(codigoRaw);
+      return idNorm === tokenNorm || codigoNorm === tokenNorm || codigoRawNorm === tokenNorm;
+    });
+  };
+
+  const getCustosByFreteRef = (ref: string) => {
+    const resolved = resolveFreteByRef(ref);
+    const refs = new Set<string>([
+      normalizeFreteRef(ref),
+      normalizeFreteRef(resolved?.id),
+      normalizeFreteRef(resolved?.codigoFrete),
+      normalizeFreteRef((resolved as any)?.codigoFreteRaw),
+    ]);
+
+    refs.delete("");
+
+    return custosAdicionaisData.filter((custo) => refs.has(normalizeFreteRef(custo.freteId)));
+  };
+
+  const getTotalCustosByFreteRef = (ref: string) =>
+    getCustosByFreteRef(ref).reduce((sum, custo) => sum + custo.valor, 0);
+
   // Query pendentes por motorista (carrega apenas fretes com pagamento_id == null)
   const motoristaIdForPendentes = editedPagamento?.motoristaId || null;
   const usePendentesEndpoint = import.meta.env.VITE_USE_FRETES_PENDENTES_ENDPOINT === "true";
@@ -365,53 +529,63 @@ export default function Pagamentos() {
     data: fretesPendentesResponse,
   } = useQuery<ApiResponse<Frete[]>>({
     queryKey: ["fretes", "pendentes", motoristaIdForPendentes],
-    queryFn: () => fretesService.listarFretesPendentes(String(motoristaIdForPendentes)),
+    queryFn: () =>
+      fretesService.listarFretesPendentes({
+        proprietarioId: String(motoristaIdForPendentes),
+        motoristaId: String(motoristaIdForPendentes),
+      }),
     enabled: usePendentesEndpoint && !!motoristaIdForPendentes,
     retry: 1,
   });
 
-  const fretesPendentesData = useMemo(
-    () => (fretesPendentesResponse?.data || []).map((frete) => ({
+  const fretesPendentesData = useMemo(() => {
+    const rawData = fretesPendentesResponse?.data || [];
+    // O backend retorna um array de agrupamentos por proprietario/motorista
+    // Ex: { proprietario_id: X, fretes: [...] }
+    const flatFretes = Array.isArray(rawData) ? rawData.flatMap((group: any) => group.fretes ? group.fretes : [group]) : [];
+
+    return flatFretes.map((frete: any, index: number) => ({
       id: frete.id,
-      motoristaId: frete.motorista_id,
+      codigoFrete: formatarCodigoFrete(frete.codigo_frete || frete.id, frete.data_frete, index + 1),
+      motoristaId: getFavorecidoId(frete),
+      motoristaNome: getFavorecidoNome(frete),
+      proprietarioTipo: frete.proprietario_tipo,
       dataFrete: formatDateBR(frete.data_frete),
-      rota: `${frete.origem} → ${frete.destino}`,
+      rota: `${frete.origem || ""} → ${frete.destino || ""}`,
       toneladas: Number(frete.toneladas) || 0,
       valorGerado: Number(frete.receita ?? frete.toneladas * frete.valor_por_tonelada) || 0,
       pagamentoId: frete.pagamento_id ?? null,
-    })),
-    [fretesPendentesResponse]
-  );
+    }));
+  }, [fretesPendentesResponse]);
 
   const pagamentosData = useMemo(
     () =>
       pagamentosApi.map((pagamento) => ({
-        id: pagamento.id,
-        motoristaId: pagamento.motorista_id,
-        motoristaNome: pagamento.motorista_nome,
-        dataFrete: pagamento.periodo_fretes,
+        id: pagamento.codigo_pagamento || pagamento.id || "SEM-ID",
+        motoristaId: getFavorecidoId(pagamento),
+        motoristaNome: getFavorecidoNome(pagamento),
+        tipoRelatorio: pagamento.tipo_relatorio || undefined,
+        dataFrete: formatPeriodoFretes(pagamento.periodo_fretes),
         toneladas: pagamento.total_toneladas,
         fretes: Number(pagamento.quantidade_fretes) || 0,
         valorUnitarioPorTonelada: Number(pagamento.valor_por_tonelada) || 0,
         valorTotal: Number(pagamento.valor_total) || 0,
-        fretesSelecionados: pagamento.fretes_incluidos
-          ? pagamento.fretes_incluidos.split(",")
-          : [],
+        fretesSelecionados: parseFretesIncluidos(pagamento.fretes_incluidos),
         dataPagamento: formatDateBR(pagamento.data_pagamento),
         statusPagamento: pagamento.status,
         metodoPagamento: pagamento.metodo_pagamento,
         comprovante: pagamento.comprovante_nome
           ? {
-              nome: pagamento.comprovante_nome,
-              url: pagamento.comprovante_url || "",
-              datadoUpload: pagamento.comprovante_data_upload || "",
-            }
+            nome: pagamento.comprovante_nome,
+            url: pagamento.comprovante_url || "",
+            datadoUpload: pagamento.comprovante_data_upload || "",
+          }
           : undefined,
         observacoes: pagamento.observacoes || undefined,
       })),
     [pagamentosApi]
   );
-  
+
   // Dados históricos para comparação (simulado - mes anterior)
   const dadosMesAnterior = {
     periodo: "2025-12",
@@ -420,6 +594,7 @@ export default function Pagamentos() {
   };
 
   const uploadComprovanteIfNeeded = async (pagamentoId: string) => {
+    if (isInternalCostFlow) return true;
     if (!selectedFile || !pagamentoId) return true;
 
     const uploadResponse = await pagamentosService.uploadComprovante(String(pagamentoId), selectedFile);
@@ -437,21 +612,23 @@ export default function Pagamentos() {
       if (response.success) {
         const createdId = String((response as any)?.data?.id || "");
         await uploadComprovanteIfNeeded(createdId);
+        const tipoRelatorio = String((response as any)?.data?.tipo_relatorio || "");
 
         const guiaPayload = {
           pagamentoId: createdId || `PG-${Date.now()}`,
           motoristaId: String(editedPagamento.motoristaId || ""),
           motoristaNome: String(
             editedPagamento.motoristaNome ||
-              motoristas.find((m) => m.id === editedPagamento.motoristaId)?.nome ||
-              "Motorista"
+            motoristas.find((m) => m.id === editedPagamento.motoristaId)?.nome ||
+            "Favorecido"
           ),
           metodoPagamento: (editedPagamento.metodoPagamento || "pix") as "pix" | "transferencia_bancaria",
-          dataPagamento: String(editedPagamento.dataPagamento || new Date().toLocaleDateString("pt-BR")),
+          dataPagamento: String(editedPagamento.dataPagamento || format(new Date(), "dd/MM/yyyy", { locale: ptBR })),
           freteIds: selectedFretes.map((id) => String(id).trim()).filter(Boolean),
           totalToneladas: Number(editedPagamento.toneladas || 0),
           valorTonelada: Number(editedPagamento.valorUnitarioPorTonelada || 0),
           valorTotal: Number(editedPagamento.valorTotal || 0),
+          tipoRelatorio: (tipoRelatorio || (isInternalCostFlow ? "GUIA_INTERNA" : "PAGAMENTO_TERCEIRO")) as "GUIA_INTERNA" | "PAGAMENTO_TERCEIRO",
         };
 
         queryClient.invalidateQueries({ queryKey: ["pagamentos"] });
@@ -460,15 +637,21 @@ export default function Pagamentos() {
           queryClient.invalidateQueries({ queryKey: ["fretes", "pendentes", motoristaIdForPendentes] });
         }
         queryClient.invalidateQueries({ queryKey: ["fretes"] });
-        toast.success("Pagamento registrado com sucesso! Deseja imprimir a guia agora?", {
-          duration: 9000,
-          action: {
-            label: "Imprimir PDF",
-            onClick: () => exportarGuiaPagamentoIndividual(guiaPayload),
-          },
-        });
+        const isGuiaInterna = guiaPayload.tipoRelatorio === "GUIA_INTERNA";
+        if (isGuiaInterna) {
+          if (autoEmitirGuia) handleExportarPDF(guiaPayload);
+          toast.success("Fechamento de custo interno confirmado e salvo.");
+        } else {
+          if (autoEmitirGuia) {
+            handleExportarPDF(guiaPayload);
+            toast.success("Pagamento registrado e guia emitida com sucesso!");
+          } else {
+            toast.success("Pagamento registrado com sucesso!");
+          }
+        }
         setIsModalOpen(false);
         setSelectedFretes([]);
+        setIsInternalCostConfirmed(false);
         setIsSaving(false);
       } else {
         toast.error(response.message || "Erro ao criar pagamento");
@@ -480,6 +663,7 @@ export default function Pagamentos() {
       const msg = isNetwork ? "Erro de rede, tente novamente" : (error?.response?.data?.message || error?.message || "Erro ao criar pagamento");
       toast.error(msg);
       setIsSaving(false);
+      setIsInternalCostConfirmed(false);
       // If backend indicates some fretes already paid, refresh pending list to sync UI
       if (String(msg).toLowerCase().includes("alguns fretes ja") || String(msg).toLowerCase().includes("alguns fretes já") || String(msg).toLowerCase().includes("já estão pagos")) {
         if (usePendentesEndpoint && motoristaIdForPendentes) {
@@ -500,7 +684,25 @@ export default function Pagamentos() {
           queryClient.invalidateQueries({ queryKey: ["fretes", "pendentes", motoristaIdForPendentes] });
         }
         queryClient.invalidateQueries({ queryKey: ["fretes"] });
-        toast.success("Pagamento atualizado com sucesso!");
+        if (autoEmitirGuia) {
+          // Precisamos remontoar o payload para a edição (simplificado p/ PDF)
+          const isGuiaInterna = isInternalCostFlow;
+          handleExportarPDF({
+            pagamentoId: String(editedPagamento.id || ""),
+            motoristaId: String(editedPagamento.motoristaId || ""),
+            motoristaNome: String(editedPagamento.motoristaNome || motoristaSelecionado?.nome || "Favorecido"),
+            metodoPagamento: (editedPagamento.metodoPagamento || "pix") as "pix" | "transferencia_bancaria",
+            dataPagamento: String(editedPagamento.dataPagamento || ""),
+            freteIds: selectedFretes.map((id) => String(id).trim()).filter(Boolean),
+            totalToneladas: Number(editedPagamento.toneladas || 0),
+            valorTonelada: Number(editedPagamento.valorUnitarioPorTonelada || 0),
+            valorTotal: Number(editedPagamento.valorTotal || 0),
+            tipoRelatorio: isGuiaInterna ? "GUIA_INTERNA" : "PAGAMENTO_TERCEIRO",
+          });
+          toast.success("Pagamento atualizado e guia reemitida!");
+        } else {
+          toast.success("Pagamento atualizado com sucesso!");
+        }
         setIsModalOpen(false);
         setIsSaving(false);
       } else {
@@ -526,15 +728,14 @@ export default function Pagamentos() {
     setEditedPagamento({
       motoristaId: "",
       motoristaNome: "",
-      dataFrete: new Date().toLocaleDateString("pt-BR"),
+      dataFrete: format(new Date(), "dd/MM/yyyy", { locale: ptBR }),
       toneladas: 0,
       fretes: 0,
       valorUnitarioPorTonelada: 150,
       valorTotal: 0,
       fretesSelecionados: [],
-      dataPagamento: new Date().toLocaleDateString("pt-BR"),
+      dataPagamento: format(new Date(), "dd/MM/yyyy", { locale: ptBR }),
       statusPagamento: "pendente",
-      metodoPagamento: "pix",
       observacoes: "",
     });
     setSelectedFile(null);
@@ -545,6 +746,7 @@ export default function Pagamentos() {
     setSelectedFileIsImage(false);
     setSelectedFileIsPdf(false);
     setSelectedFretes([]);
+    setIsInternalCostConfirmed(false);
     setIsEditing(false);
     setIsModalOpen(true);
   };
@@ -560,6 +762,7 @@ export default function Pagamentos() {
     setSelectedFilePreview(null);
     setSelectedFileIsImage(false);
     setSelectedFileIsPdf(false);
+    setIsInternalCostConfirmed(false);
     setIsEditing(true);
     setIsModalOpen(true);
   };
@@ -589,12 +792,15 @@ export default function Pagamentos() {
         fretes: 0,
         valorTotal: 0,
         fretesSelecionados: [],
-        metodoPagamento: "pix",
+        metodoPagamento: undefined,
       });
+      setIsInternalCostConfirmed(false);
       return;
     }
 
-    const motorista = motoristas.find((m) => m.id === motoristaId);
+    const motorista =
+      motoristas.find((m) => m.id === motoristaId) ||
+      motoristasComPendentes.find((m) => m.id === motoristaId);
     setSelectedFretes([]);
     clearFormError("motoristaId");
     clearFormError("fretes");
@@ -608,6 +814,7 @@ export default function Pagamentos() {
       fretesSelecionados: [],
       metodoPagamento: motorista?.tipoPagamento || "pix",
     });
+    setIsInternalCostConfirmed(false);
   };
 
   // Buscar fretes não pagos do motorista selecionado
@@ -618,11 +825,24 @@ export default function Pagamentos() {
       return fretesPendentesData;
     }
     return fretesData.filter(
-      (f) => f.motoristaId === editedPagamento.motoristaId && f.pagamentoId === null
+      (f) =>
+        f.motoristaId === editedPagamento.motoristaId &&
+        (f.pagamentoId == null || String(f.pagamentoId) === "0")
     );
   }, [editedPagamento?.motoristaId, usePendentesEndpoint, fretesPendentesData, fretesData]);
 
+  const fretesRefs = (isEditing
+    ? editedPagamento?.fretesSelecionados
+    : selectedPagamento?.fretesSelecionados) || [];
+  const fretesDoPagamento = fretesRefs
+    .map((ref) => resolveFreteByRef(ref))
+    .filter((frete): frete is NonNullable<typeof frete> => !!frete)
+    .filter((frete, index, array) => array.findIndex((item) => item.id === frete.id) === index);
+
+  const fretesDisponiveis = isEditing ? fretesDoPagamento : fretesNaoPagos;
+
   const handleToggleFrete = (freteId: string) => {
+    if (isEditing) return;
     // prefer pending fretes list, fallback to full fretesData
     const frete =
       (usePendentesEndpoint ? fretesPendentesData.find((f) => f.id === freteId) : undefined) ||
@@ -643,11 +863,10 @@ export default function Pagamentos() {
     const fretesSelecionados = fretesData.filter((f) => nextSelected.includes(f.id));
     const toneladas = fretesSelecionados.reduce((acc, f) => acc + f.toneladas, 0);
     const valorBruto = fretesSelecionados.reduce((acc, f) => acc + f.valorGerado, 0);
-    const custosTotais = nextSelected.reduce((acc, freteId) => {
-      return acc + custosAdicionaisData
-        .filter(c => c.freteId === freteId)
-        .reduce((sum, c) => sum + c.valor, 0);
-    }, 0);
+    const custosTotais = nextSelected.reduce(
+      (acc, freteId) => acc + getTotalCustosByFreteRef(freteId),
+      0
+    );
     const valorTotal = valorBruto - custosTotais;
     const dataFrete = fretesSelecionados.map((f) => f.dataFrete).join(", ");
     const valorUnitario = toneladas > 0 ? valorTotal / toneladas : 0;
@@ -661,7 +880,7 @@ export default function Pagamentos() {
       toneladas,
       fretes: fretesSelecionados.length,
       valorTotal,
-      dataFrete: dataFrete || new Date().toLocaleDateString("pt-BR"),
+      dataFrete: dataFrete || format(new Date(), "dd/MM/yyyy", { locale: ptBR }),
       valorUnitarioPorTonelada: Number(valorUnitario.toFixed(2)),
       fretesSelecionados: nextSelected,
     });
@@ -691,6 +910,10 @@ export default function Pagamentos() {
     }
   };
 
+  const metodoPagamentoAtual = isInternalCostFlow
+    ? "pix"
+    : (motoristaSelecionado?.tipoPagamento || editedPagamento.metodoPagamento || "pix");
+
   const buildPeriodoFretes = (freteIds: string[]) => {
     const datas = freteIds
       .map((id) => fretesData.find((f) => f.id === id)?.dataFrete)
@@ -705,11 +928,17 @@ export default function Pagamentos() {
     const fim = sorted[sorted.length - 1];
 
     const mesmoMes = inicio.getMonth() === fim.getMonth() && inicio.getFullYear() === fim.getFullYear();
-    if (mesmoMes) {
-      return `${format(inicio, "dd")}-${format(fim, "dd")}/${format(inicio, "MM/yyyy")}`;
+
+    // Se é o mesmo dia, mostrar apenas uma data
+    if (inicio.getDate() === fim.getDate() && mesmoMes) {
+      return format(inicio, "dd/MM/yyyy");
     }
 
-    return `${format(inicio, "dd/MM/yyyy")} - ${format(fim, "dd/MM/yyyy")}`;
+    if (mesmoMes) {
+      return `${format(inicio, "dd")} a ${format(fim, "dd")} de ${format(inicio, "MMMM/yyyy", { locale: ptBR })}`;
+    }
+
+    return `${format(inicio, "dd/MM/yyyy")} a ${format(fim, "dd/MM/yyyy")}`;
   };
 
   const getDadosPagamentoMotorista = (
@@ -736,8 +965,8 @@ export default function Pagamentos() {
     const tipoConta = motorista?.tipoConta === "corrente"
       ? "Corrente"
       : motorista?.tipoConta === "poupanca"
-      ? "Poupança"
-      : "N/I";
+        ? "Poupança"
+        : "N/I";
 
     return {
       metodoLabel: "Transferência Bancária",
@@ -745,7 +974,7 @@ export default function Pagamentos() {
     };
   };
 
-  const exportarGuiaPagamentoIndividual = (params: {
+  const handleExportarPDF = (params: {
     pagamentoId: string;
     motoristaId: string;
     motoristaNome: string;
@@ -755,106 +984,69 @@ export default function Pagamentos() {
     totalToneladas: number;
     valorTonelada: number;
     valorTotal: number;
+    tipoRelatorio?: "GUIA_INTERNA" | "PAGAMENTO_TERCEIRO";
   }) => {
-    const doc = new jsPDF();
     const dadosPagamento = getDadosPagamentoMotorista(params.motoristaId, params.metodoPagamento);
-    const fretesSelecionados = fretesData.filter((f) => params.freteIds.includes(f.id));
+    const normalizeRef = (value: string) =>
+      String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 
-    doc.setFillColor(22, 163, 74);
-    doc.rect(0, 0, 210, 34, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("GUIA DE PAGAMENTO", 105, 14, { align: "center" });
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Pagamento: ${params.pagamentoId}`, 105, 21, { align: "center" });
-    doc.text(`Data: ${params.dataPagamento}`, 105, 27, { align: "center" });
+    const resolveFreteByRef = (ref: string) => {
+      const token = String(ref || "").trim();
+      if (!token) return undefined;
+      const tokenLower = token.toLowerCase();
+      const tokenNorm = normalizeRef(token);
+      return fretesData.find((f) => {
+        const id = String(f.id || "").trim().toLowerCase();
+        const codigo = String(f.codigoFrete || "").trim().toLowerCase();
+        const codigoRaw = String((f as any).codigoFreteRaw || "").trim().toLowerCase();
+        if (id === tokenLower || codigo === tokenLower || codigoRaw === tokenLower) return true;
+        const idNorm = normalizeRef(id);
+        const codigoNorm = normalizeRef(codigo);
+        const codigoRawNorm = normalizeRef(codigoRaw);
+        return idNorm === tokenNorm || codigoNorm === tokenNorm || codigoRawNorm === tokenNorm;
+      });
+    };
 
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("DADOS DO MOTORISTA", 14, 42);
+    const fretesSelecionados = params.freteIds
+      .map((ref) => resolveFreteByRef(ref))
+      .filter((frete): frete is NonNullable<typeof frete> => !!frete)
+      .filter((frete, index, array) => array.findIndex((item) => item.id === frete.id) === index);
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text(`Nome: ${params.motoristaNome}`, 14, 49);
-    doc.text(`Método: ${dadosPagamento.metodoLabel}`, 14, 55);
-
-    const dadosPagamentoQuebrados = doc.splitTextToSize(`Dados para pagamento: ${dadosPagamento.dadosLabel}`, 182);
-    doc.text(dadosPagamentoQuebrados, 14, 61);
-    const yAposDados = 61 + (dadosPagamentoQuebrados.length - 1) * 5 + 4;
-
-    doc.setFillColor(241, 245, 249);
-    doc.roundedRect(14, yAposDados, 182, 18, 2, 2, "F");
-    doc.setDrawColor(203, 213, 225);
-    doc.roundedRect(14, yAposDados, 182, 18, 2, 2, "S");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text("Fretes", 20, yAposDados + 6);
-    doc.text("Total Toneladas", 72, yAposDados + 6);
-    doc.text("Valor/Tonelada", 126, yAposDados + 6);
-    doc.text("Valor a Pagar", 172, yAposDados + 6, { align: "right" });
-
-    doc.setTextColor(30, 41, 59);
-    doc.setFontSize(12);
-    doc.text(`${params.freteIds.length}`, 20, yAposDados + 13);
-    doc.text(`${Number(params.totalToneladas).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} t`, 72, yAposDados + 13);
-    doc.text(`R$ ${Number(params.valorTonelada).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 126, yAposDados + 13);
-    doc.setTextColor(22, 163, 74);
-    doc.text(`R$ ${Number(params.valorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 172, yAposDados + 13, { align: "right" });
-    doc.setTextColor(0, 0, 0);
-
-    const linhasFrete = fretesSelecionados.map((frete) => [
-      frete.id,
-      frete.dataFrete,
-      frete.rota,
-      `${Number(frete.toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} t`,
-      `R$ ${Number(frete.valorGerado).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-    ]);
-
-    autoTable(doc, {
-      startY: yAposDados + 24,
-      head: [["Frete", "Data", "Rota", "Toneladas", "Valor Bruto"]],
-      body: linhasFrete,
-      theme: "grid",
-      headStyles: {
-        fillColor: [37, 99, 235],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 9,
-      },
-      styles: {
-        fontSize: 8.5,
-        cellPadding: 2.2,
-      },
-      columnStyles: {
-        0: { cellWidth: 24, fontStyle: "bold" },
-        1: { cellWidth: 24, halign: "center" },
-        2: { cellWidth: 86 },
-        3: { cellWidth: 24, halign: "right" },
-        4: { cellWidth: 34, halign: "right", fontStyle: "bold" },
-      },
-      alternateRowStyles: {
-        fillColor: [248, 250, 252],
-      },
+    const fretesParam = fretesSelecionados.map(frete => {
+      const custosFrete = getTotalCustosByFreteRef(frete.id);
+      const custosDetalhados = getCustosByFreteRef(frete.id).map(c => ({ descricao: c.descricao, valor: c.valor }));
+      return {
+        id: String(frete.id),
+        codigo: String(frete.codigoFrete || frete.id),
+        dataFrete: String(frete.dataFrete || ""),
+        rota: String(frete.rota || ""),
+        toneladas: Number(frete.toneladas || 0),
+        valorGerado: Number(frete.valorGerado || 0),
+        custosTotal: custosFrete,
+        valorLiquido: Number(frete.valorGerado || 0) - custosFrete,
+        custos: custosDetalhados
+      };
     });
 
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.3);
-      doc.line(14, 287, 196, 287);
-      doc.setFontSize(7);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Página ${i} de ${pageCount}`, 105, 291, { align: "center" });
-      doc.text("Guia para contabilidade", 195, 291, { align: "right" });
-    }
+    const totalCustos = fretesParam.reduce((acc, f) => acc + f.custosTotal, 0);
+    const valorGeradoBruto = fretesParam.reduce((acc, f) => acc + f.valorGerado, 0);
 
-    const nomeArquivo = `Guia_Pagamento_${params.motoristaNome.replace(/\s+/g, "_")}_${params.pagamentoId}.pdf`;
-    doc.save(nomeArquivo);
+    const pdfParams: PagamentoPDFParams = {
+      pagamentoId: params.pagamentoId,
+      motoristaNome: params.motoristaNome,
+      tipoRelatorio: params.tipoRelatorio,
+      fretes: fretesParam,
+      totalToneladas: Number(params.totalToneladas) || 0,
+      valorGeradoBruto,
+      totalCustos,
+      valorAPagar: valorGeradoBruto - totalCustos,
+      dadosPagamento: {
+        metodoLabel: dadosPagamento.metodoLabel,
+        dadosLabel: dadosPagamento.dadosLabel
+      }
+    };
+
+    exportarGuiaPagamentoIndividual(pdfParams);
   };
 
   const handleSave = () => {
@@ -865,7 +1057,7 @@ export default function Pagamentos() {
 
     const nextErrors: FormErrors = { motoristaId: "", fretes: "" };
     if (!editedPagamento.motoristaId) {
-      nextErrors.motoristaId = "Selecione um motorista.";
+      nextErrors.motoristaId = "Selecione um proprietário/favorecido.";
     }
     if (selectedFretes.length === 0) {
       nextErrors.fretes = "Selecione ao menos um frete.";
@@ -873,6 +1065,12 @@ export default function Pagamentos() {
     if (nextErrors.motoristaId || nextErrors.fretes) {
       setFormErrors(nextErrors);
       triggerShake();
+      setIsSaving(false);
+      return;
+    }
+
+    if (isInternalCostFlow && !isInternalCostConfirmed) {
+      toast.error("Confirme o fechamento de custo interno para continuar.");
       setIsSaving(false);
       return;
     }
@@ -894,9 +1092,24 @@ export default function Pagamentos() {
       return;
     }
 
+    const nomeFavorecidoResolvido = (
+      editedPagamento.motoristaNome ||
+      motoristasComPendentes.find((m) => m.id === editedPagamento.motoristaId)?.nome ||
+      fretesNaoPagos.find((f) => f.motoristaId === editedPagamento.motoristaId)?.motoristaNome ||
+      ""
+    ).trim();
+
+    if (!nomeFavorecidoResolvido) {
+      toast.error("Não foi possível identificar o nome do favorecido para este pagamento.");
+      setIsSaving(false);
+      return;
+    }
+
     const payload: CriarPagamentoPayload = {
       motorista_id: editedPagamento.motoristaId,
-      motorista_nome: (editedPagamento.motoristaNome || "").trim().toUpperCase(),
+      motorista_nome: nomeFavorecidoResolvido.toUpperCase(),
+      proprietario_id: editedPagamento.motoristaId,
+      proprietario_nome: nomeFavorecidoResolvido.toUpperCase(),
       periodo_fretes: (buildPeriodoFretes(selectedFretes) || editedPagamento.dataFrete || "").trim().toUpperCase(),
       quantidade_fretes: selectedFretes.length,
       fretes_incluidos: selectedFretes.join(","),
@@ -904,10 +1117,9 @@ export default function Pagamentos() {
       valor_por_tonelada: editedPagamento.valorUnitarioPorTonelada || 0,
       valor_total: editedPagamento.valorTotal || 0,
       data_pagamento: toApiDate(editedPagamento.dataPagamento || ""),
-      status: editedPagamento.statusPagamento || "pendente",
-      metodo_pagamento: editedPagamento.metodoPagamento || "pix",
-      comprovante_nome: selectedFile?.name,
-      comprovante_url: editedPagamento.comprovante?.url,
+      status: isInternalCostFlow ? "pago" : (editedPagamento.statusPagamento || "pendente"),
+      comprovante_nome: isInternalCostFlow ? undefined : selectedFile?.name,
+      comprovante_url: isInternalCostFlow ? undefined : editedPagamento.comprovante?.url,
       observacoes: editedPagamento.observacoes,
     };
 
@@ -940,361 +1152,9 @@ export default function Pagamentos() {
     setCurrentPage(1);
   }, [search, statusFilter, motoristaFilter]);
 
-  // Função para exportar PDF profissional e completo
-  const handleExportarPDF = () => {
-    const doc = new jsPDF();
-    
-    // ==================== CABEÇALHO PREMIUM ====================
-    // Fundo azul do cabeçalho
-    doc.setFillColor(37, 99, 235);
-    doc.rect(0, 0, 210, 50, "F");
-    
-    // Logo/Nome da empresa em branco
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.setFont("helvetica", "bold");
-    doc.text("Caramello Logistica", 105, 18, { align: "center" });
-    
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text("RELATÓRIO DE PAGAMENTOS A MOTORISTAS", 105, 35, { align: "center" });
-    
-    const [ano, mes] = selectedPeriodo.split("-");
-    const nomeMes = format(new Date(parseInt(ano), parseInt(mes) - 1), "MMMM yyyy", { locale: ptBR });
-    const nomeFormatado = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
-    
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Período de Referência: ${nomeFormatado}`, 105, 42, { align: "center" });
-    
-    doc.setFontSize(8);
-    doc.text(`Emitido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 105, 47, { align: "center" });
-    
-    doc.setTextColor(0, 0, 0);
-    
-    // Cálculos gerais
-    const totalPago = filteredData.filter((p) => p.statusPagamento === "pago").reduce((acc, p) => acc + p.valorTotal, 0);
-    const totalPendente = filteredData.filter((p) => p.statusPagamento === "pendente").reduce((acc, p) => acc + p.valorTotal, 0);
-    const totalBruto = filteredData.reduce((acc, p) => {
-      const fretes = p.fretesSelecionados || [];
-      return acc + fretes.reduce((sum, freteId) => {
-        const frete = fretesData.find((f) => f.id === freteId);
-        return sum + (frete?.valorGerado || 0);
-      }, 0);
-    }, 0);
-    const totalDescontos = filteredData.reduce((acc, p) => {
-      const fretes = p.fretesSelecionados || [];
-      return acc + fretes.reduce((sum, freteId) => {
-        return sum + custosAdicionaisData.filter((c) => c.freteId === freteId).reduce((s, c) => s + c.valor, 0);
-      }, 0);
-    }, 0);
-    const totalLiquido = totalBruto - totalDescontos;
-    const qtdMotoristas = new Set(filteredData.map((p) => p.motoristaId)).size;
-    const qtdFretes = filteredData.reduce((acc, p) => acc + p.fretes, 0);
-    const totalToneladas = filteredData.reduce((acc, p) => acc + p.toneladas, 0);
-    const fretesSelecionadosIds = new Set(
-      filteredData.flatMap((p) => p.fretesSelecionados || [])
-    );
-    const ultimoFreteDate = fretesData
-      .filter((f) => fretesSelecionadosIds.has(f.id))
-      .map((f) => parse(f.dataFrete, "dd/MM/yyyy", new Date(0)))
-      .sort((a, b) => b.getTime() - a.getTime())[0];
-    const ultimoFreteFormatado = ultimoFreteDate
-      ? format(ultimoFreteDate, "dd/MM/yyyy")
-      : "—";
-    
-    // ==================== INFORMAÇÕES DO RELATÓRIO ====================
-    let yPosition = 56;
-    doc.setFillColor(248, 250, 252);
-    doc.roundedRect(15, yPosition, 180, 22, 2, 2, "F");
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(15, yPosition, 180, 22, 2, 2, "S");
-    
-    doc.setFontSize(9);
-    doc.setTextColor(71, 85, 105);
-    doc.setFont("helvetica", "bold");
-    doc.text("Período:", 20, yPosition + 7);
-    doc.setFont("helvetica", "normal");
-    doc.text(nomeFormatado, 40, yPosition + 7);
-    doc.setFont("helvetica", "bold");
-    doc.text("Último frete:", 140, yPosition + 7);
-    doc.setFont("helvetica", "normal");
-    doc.text(ultimoFreteFormatado, 175, yPosition + 7);
-    
-    doc.setFont("helvetica", "bold");
-    doc.text("Motoristas:", 20, yPosition + 15);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${qtdMotoristas}`, 50, yPosition + 15);
-    doc.setFont("helvetica", "bold");
-    doc.text("Fretes:", 90, yPosition + 15);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${qtdFretes}`, 108, yPosition + 15);
-    doc.setFont("helvetica", "bold");
-    doc.text("Toneladas:", 140, yPosition + 15);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${totalToneladas.toFixed(0)}t`, 170, yPosition + 15);
-    
-    yPosition += 28;
-    
-    // ==================== RESUMO EXECUTIVO ====================
-    doc.setFillColor(241, 245, 249);
-    doc.rect(15, yPosition, 180, 8, "F");
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 41, 59);
-    doc.text("RESUMO DE PAGAMENTOS", 20, yPosition + 5.5);
-    
-    yPosition += 12;
-    
-    // Cards de resumo em 3 colunas
-    doc.setTextColor(0, 0, 0);
-    
-    // Card 1 - Valores Brutos
-    doc.setFillColor(219, 234, 254);
-    doc.roundedRect(15, yPosition, 58, 28, 2, 2, "F");
-    doc.setDrawColor(59, 130, 246);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(15, yPosition, 58, 28, 2, 2, "S");
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(71, 85, 105);
-    doc.text("Valor Bruto (Fretes)", 20, yPosition + 5);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(37, 99, 235);
-    doc.text(`R$ ${totalBruto.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, 20, yPosition + 13);
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`${qtdFretes} frete(s) • ${qtdMotoristas} motorista(s)`, 20, yPosition + 19);
-    doc.text(`${filteredData.length} pagamento(s) • ${totalToneladas.toFixed(0)}t`, 20, yPosition + 24);
-    
-    // Card 2 - Descontos
-    doc.setFillColor(254, 226, 226);
-    doc.roundedRect(78, yPosition, 58, 28, 2, 2, "F");
-    doc.setDrawColor(239, 68, 68);
-    doc.roundedRect(78, yPosition, 58, 28, 2, 2, "S");
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(71, 85, 105);
-    doc.text("Total de Descontos", 83, yPosition + 5);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(220, 38, 38);
-    doc.text(`-R$ ${totalDescontos.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, 83, yPosition + 13);
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    const percDesconto = totalBruto > 0 ? (totalDescontos / totalBruto) * 100 : 0;
-    doc.text(`${percDesconto.toFixed(1)}% do valor bruto`, 83, yPosition + 19);
-    doc.text("Combustivel e pedagios", 83, yPosition + 24);
-    
-    // Card 3 - Valor Líquido
-    doc.setFillColor(220, 252, 231);
-    doc.roundedRect(141, yPosition, 54, 28, 2, 2, "F");
-    doc.setDrawColor(34, 197, 94);
-    doc.setLineWidth(0.8);
-    doc.roundedRect(141, yPosition, 54, 28, 2, 2, "S");
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(71, 85, 105);
-    doc.text("Valor Liquido a Pagar", 146, yPosition + 5);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(22, 163, 74);
-    doc.text(`R$ ${totalLiquido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, 146, yPosition + 13);
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Pago: R$ ${totalPago.toLocaleString("pt-BR")}`, 146, yPosition + 19);
-    doc.text(`Pendente: R$ ${totalPendente.toLocaleString("pt-BR")}`, 146, yPosition + 24);
-    
-    yPosition += 35;
-    
-    // ==================== DETALHAMENTO POR MOTORISTA ====================
-    doc.setFillColor(241, 245, 249);
-    doc.rect(15, yPosition, 180, 8, "F");
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 41, 59);
-    doc.text("DETALHAMENTO POR MOTORISTA", 20, yPosition + 5.5);
-    
-    yPosition += 12;
-    
-    // Tabela detalhada de pagamentos
-    const tableData = filteredData.map((p) => {
-      const fretesIds = (p.fretesSelecionados || []).join(", ");
-      const valorBruto = (p.fretesSelecionados || []).reduce((sum, freteId) => {
-        const frete = fretesData.find((f) => f.id === freteId);
-        return sum + (frete?.valorGerado || 0);
-      }, 0);
-      const descontos = (p.fretesSelecionados || []).reduce((sum, freteId) => {
-        return sum + custosAdicionaisData.filter((c) => c.freteId === freteId).reduce((s, c) => s + c.valor, 0);
-      }, 0);
-      
-      return [
-        p.id,
-        p.motoristaNome,
-        fretesIds,
-        `${p.toneladas}t`,
-        `R$ ${valorBruto.toLocaleString("pt-BR")}`,
-        `R$ ${descontos.toLocaleString("pt-BR")}`,
-        `R$ ${p.valorTotal.toLocaleString("pt-BR")}`,
-        statusConfig[p.statusPagamento].label,
-      ];
-    });
-    
-    autoTable(doc, {
-      startY: yPosition,
-      head: [["ID", "Motorista", "Fretes Realiz.", "Carga", "Val. Bruto", "Descontos", "Val. Liquido", "Status"]],
-      body: tableData,
-      theme: "grid",
-      headStyles: { 
-        fillColor: [37, 99, 235],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 10,
-        halign: "center",
-      },
-      styles: { 
-        fontSize: 9,
-        cellPadding: 3,
-      },
-      columnStyles: {
-        0: { cellWidth: 22, halign: "center", fontStyle: "bold", fontSize: 9 },
-        1: { cellWidth: 32, fontSize: 9 },
-        2: { cellWidth: 28, halign: "center", fontSize: 9 },
-        3: { cellWidth: 14, halign: "center", fontSize: 9 },
-        4: { cellWidth: 20, halign: "right", fontSize: 9 },
-        5: { cellWidth: 20, halign: "right", textColor: [220, 38, 38], fontSize: 9 },
-        6: { cellWidth: 22, halign: "right", fontStyle: "bold", textColor: [22, 163, 74], fontSize: 9 },
-        7: { cellWidth: 17, halign: "center", fontSize: 9 },
-      },
-      alternateRowStyles: {
-        fillColor: [248, 250, 252],
-      },
-      didParseCell: (data) => {
-        if (data.section === "body") {
-          if ([0, 1].includes(data.column.index)) {
-            data.cell.styles.fontStyle = "bold";
-          }
-          if ([4, 5, 6].includes(data.column.index)) {
-            data.cell.styles.fontStyle = "bold";
-          }
-        }
-      },
-    });
-    
-    // ==================== DETALHAMENTO DE CUSTOS POR TIPO ====================
-    const finalY = (doc as any).lastAutoTable.finalY || yPosition;
-    yPosition = finalY + 10;
-    
-    if (yPosition > 250) {
-      doc.addPage();
-      yPosition = 20;
-    }
-    
-    doc.setFillColor(254, 243, 199);
-    doc.rect(15, yPosition, 180, 8, "F");
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 41, 59);
-    doc.text("DESCONTOS POR CATEGORIA", 20, yPosition + 5.5);
-    
-    yPosition += 12;
-    
-    // Calcular custos por tipo
-    const custosPorTipo: { [key: string]: number } = {};
-    filteredData.forEach((pag) => {
-      (pag.fretesSelecionados || []).forEach((freteId) => {
-        custosAdicionaisData.filter((c) => c.freteId === freteId).forEach((custo) => {
-          custosPorTipo[custo.descricao] = (custosPorTipo[custo.descricao] || 0) + custo.valor;
-        });
-      });
-    });
-    
-    const custosTable = Object.entries(custosPorTipo).map(([tipo, valor]) => {
-      const percentual = totalDescontos > 0 ? (valor / totalDescontos) * 100 : 0;
-      return [
-        tipo,
-        `R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-        `${percentual.toFixed(1)}%`,
-      ];
-    });
-    
-    // Adicionar linha de total
-    custosTable.push([
-      "TOTAL",
-      `R$ ${totalDescontos.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-      "100.0%",
-    ]);
-    
-    autoTable(doc, {
-      startY: yPosition,
-      head: [["Tipo de Custo", "Valor Total", "% do Total"]],
-      body: custosTable,
-      theme: "striped",
-      headStyles: {
-        fillColor: [251, 191, 36],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 11,
-      },
-      styles: {
-        fontSize: 10,
-        cellPadding: 4,
-      },
-      columnStyles: {
-        0: { cellWidth: 100, fontSize: 10 },
-        1: { cellWidth: 50, halign: "right", fontStyle: "bold", fontSize: 10 },
-        2: { cellWidth: 30, halign: "center", fontSize: 10 },
-      },
-      didParseCell: (data) => {
-        // Destacar linha de total
-        if (data.row.index === custosTable.length - 1) {
-          data.cell.styles.fillColor = [254, 243, 199];
-          data.cell.styles.fontStyle = "bold";
-          data.cell.styles.textColor = [30, 41, 59];
-        }
-      },
-    });
-    
-    // ==================== FOOTER EM TODAS AS PÁGINAS ====================
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.5);
-      doc.line(15, 280, 195, 280);
-      
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(100, 116, 139);
-      
-      doc.text("Caramello Logistica - Sistema de Gestao de Fretes", 20, 285);
-      doc.text(`Pagina ${i} de ${pageCount}`, 105, 285, { align: "center" });
-      doc.text(`Relatorio Confidencial`, 190, 285, { align: "right" });
-      
-      doc.setFontSize(6);
-      doc.setTextColor(148, 163, 184);
-      doc.text("Este documento foi gerado automaticamente e contem informacoes confidenciais", 105, 290, { align: "center" });
-    }
-    
-    // ==================== DOWNLOAD ====================
-    const nomeArquivo = `Caramello_Logistica_Pagamentos_${selectedPeriodo.replace("-", "_")}.pdf`;
-    doc.save(nomeArquivo);
-    toast.success(`PDF "${nomeArquivo}" gerado com sucesso!`, { duration: 4000 });
+  // Função para exportar Resumo Geral (Mockada temporariamente)
+  const handleExportarGeralPDF = () => {
+    toast.info("Exportação geral de pagamentos estará disponível em breve.");
   };
 
   const columns = [
@@ -1310,7 +1170,7 @@ export default function Pagamentos() {
     },
     {
       key: "motoristaNome",
-      header: "Motorista",
+      header: "Favorecido",
       render: (item: PagamentoMotorista) => (
         <div className="flex items-start gap-3 py-2">
           <Avatar className="h-10 w-10 border-2 border-primary/20">
@@ -1410,17 +1270,9 @@ export default function Pagamentos() {
     .filter((p) => p.statusPagamento === "pago")
     .reduce((acc, p) => acc + p.valorTotal, 0);
 
-  const motoristaSelecionado = editedPagamento.motoristaId
-    ? motoristas.find((m) => m.id === editedPagamento.motoristaId)
-    : undefined;
-
-  const fretesDoPagamento = selectedPagamento?.fretesSelecionados
-    ? fretesData.filter((f) => selectedPagamento.fretesSelecionados?.includes(f.id))
-    : [];
-
   if (isLoadingPagamentos) {
     return (
-      <MainLayout title="Pagamentos" subtitle="Registro de pagamentos de motoristas">
+      <MainLayout title="Pagamentos" subtitle="Registro de pagamentos por proprietário/favorecido">
         <div className="flex items-center justify-center h-96">
           <div className="text-center space-y-4">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
@@ -1432,9 +1284,9 @@ export default function Pagamentos() {
   }
 
   return (
-    <MainLayout title="Pagamentos" subtitle="Registro de pagamentos de motoristas">
+    <MainLayout title="Pagamentos" subtitle="Registro de pagamentos por proprietário/favorecido">
       <PageHeader
-        title="Pagamentos de Motoristas"
+        title="Pagamentos por Favorecido"
         description="Registre e acompanhe os pagamentos pelos fretes realizados"
         actions={
           <div className="hidden lg:flex items-center gap-3">
@@ -1448,7 +1300,7 @@ export default function Pagamentos() {
             />
 
             {/* Botão Exportar PDF */}
-            <Button variant="outline" onClick={handleExportarPDF} className="gap-2">
+            <Button variant="outline" onClick={handleExportarGeralPDF} className="gap-2">
               <FileDown className="h-4 w-4" />
               Exportar PDF
             </Button>
@@ -1517,7 +1369,7 @@ export default function Pagamentos() {
                     ? ((totalAtual - dadosMesAnterior.totalPago) / dadosMesAnterior.totalPago) * 100
                     : 0;
                   const temDados = totalAtual > 0;
-                  
+
                   return temDados && Math.abs(variacao) > 0 ? (
                     <Badge
                       variant={variacao < 0 ? "completed" : "cancelled"}
@@ -1577,16 +1429,16 @@ export default function Pagamentos() {
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Buscar</Label>
                 <Input
-                  placeholder="Buscar por motorista ou ID de pagamento..."
+                  placeholder="Buscar por favorecido ou ID de pagamento..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Motorista</Label>
+                <Label className="text-sm font-medium">Proprietário / Favorecido</Label>
                 <Select value={motoristaFilter} onValueChange={setMotoristaFilter}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Motorista" />
+                    <SelectValue placeholder="Proprietário / Favorecido" />
                   </SelectTrigger>
                   <SelectContent className="max-h-64 overflow-y-auto">
                     <SelectItem value="all">Todos</SelectItem>
@@ -1622,7 +1474,7 @@ export default function Pagamentos() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      handleExportarPDF();
+                      handleExportarGeralPDF();
                       setFiltersOpen(false);
                     }}
                     className="w-full gap-2"
@@ -1651,13 +1503,13 @@ export default function Pagamentos() {
         className="hidden lg:flex"
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Buscar por motorista ou ID de pagamento..."
+        searchPlaceholder="Buscar por favorecido ou ID de pagamento..."
       >
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground block">Motorista</Label>
+          <Label className="text-xs text-muted-foreground block">Proprietário / Favorecido</Label>
           <Select value={motoristaFilter} onValueChange={setMotoristaFilter}>
             <SelectTrigger className="w-48">
-              <SelectValue placeholder="Motorista" />
+              <SelectValue placeholder="Proprietário / Favorecido" />
             </SelectTrigger>
             <SelectContent className="max-h-64 overflow-y-auto">
               <SelectItem value="all">Todos</SelectItem>
@@ -1783,20 +1635,48 @@ export default function Pagamentos() {
           <DialogHeader>
             <div className="flex items-center justify-between">
               <DialogTitle>Detalhes do Pagamento</DialogTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (selectedPagamento) {
-                    handleOpenEditModal(selectedPagamento);
-                    setSelectedPagamento(null);
-                  }
-                }}
-                className="gap-2"
-              >
-                <Edit className="h-4 w-4" />
-                Editar
-              </Button>
+              <DialogDescription className="sr-only">
+                Detalhes do pagamento e ações disponíveis.
+              </DialogDescription>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!selectedPagamento) return;
+                    handleExportarPDF({
+                      pagamentoId: selectedPagamento.id,
+                      motoristaId: selectedPagamento.motoristaId,
+                      motoristaNome: selectedPagamento.motoristaNome,
+                      metodoPagamento: selectedPagamento.metodoPagamento,
+                      dataPagamento: selectedPagamento.dataPagamento,
+                      freteIds: selectedPagamento.fretesSelecionados || [],
+                      totalToneladas: Number(selectedPagamento.toneladas || 0),
+                      valorTonelada: Number(selectedPagamento.valorUnitarioPorTonelada || 0),
+                      valorTotal: Number(selectedPagamento.valorTotal || 0),
+                      tipoRelatorio: selectedPagamento.tipoRelatorio,
+                    });
+                  }}
+                  className="gap-2"
+                >
+                  <FileDown className="h-4 w-4" />
+                  Reimprimir PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (selectedPagamento) {
+                      handleOpenEditModal(selectedPagamento);
+                      setSelectedPagamento(null);
+                    }
+                  }}
+                  className="gap-2"
+                >
+                  <Edit className="h-4 w-4" />
+                  Editar
+                </Button>
+              </div>
             </div>
           </DialogHeader>
           <div className="max-h-[calc(90vh-200px)] overflow-y-auto px-1">
@@ -1819,7 +1699,7 @@ export default function Pagamentos() {
 
                 {/* Motorista Info */}
                 <div>
-                  <h3 className="font-semibold mb-3">Informações do Motorista</h3>
+                  <h3 className="font-semibold mb-3">Informações do Favorecido</h3>
                   <Card className="p-4 flex items-center gap-4">
                     <Avatar className="h-16 w-16">
                       <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
@@ -1871,7 +1751,7 @@ export default function Pagamentos() {
                     <h3 className="font-semibold mb-3">Fretes com Detalhamento de Custos</h3>
                     <div className="space-y-3">
                       {fretesDoPagamento.map((frete) => {
-                        const custosFrete = custosAdicionaisData.filter((c) => c.freteId === frete.id);
+                        const custosFrete = getCustosByFreteRef(frete.id);
                         const totalCustos = custosFrete.reduce((sum, c) => sum + c.valor, 0);
                         const valorLiquido = frete.valorGerado - totalCustos;
                         return (
@@ -1880,7 +1760,7 @@ export default function Pagamentos() {
                               <div className="flex items-center justify-between">
                                 <div>
                                   <p className="text-sm font-semibold text-foreground">
-                                    {frete.id} • {frete.rota}
+                                    {frete.codigoFrete || frete.id} • {frete.rota}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
                                     {frete.dataFrete} • {frete.toneladas}t
@@ -1890,7 +1770,7 @@ export default function Pagamentos() {
                                   Bruto
                                 </Badge>
                               </div>
-                              
+
                               <div className="bg-background p-3 rounded border border-blue-200 dark:border-blue-900">
                                 <p className="text-sm font-semibold text-blue-600">
                                   R$ {frete.valorGerado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1950,9 +1830,7 @@ export default function Pagamentos() {
                           .reduce((acc, frete) => {
                             return (
                               acc +
-                              custosAdicionaisData
-                                .filter((c) => c.freteId === frete.id)
-                                .reduce((sum, c) => sum + c.valor, 0)
+                              getTotalCustosByFreteRef(frete.id)
                             );
                           }, 0)
                           .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2063,6 +1941,9 @@ export default function Pagamentos() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Comprovante</DialogTitle>
+            <DialogDescription className="sr-only">
+              Visualização do arquivo de comprovante.
+            </DialogDescription>
           </DialogHeader>
           {comprovanteDialog && (
             <div className="space-y-3">
@@ -2114,25 +1995,33 @@ export default function Pagamentos() {
             <DialogTitle>
               {isEditing ? "Editar Pagamento" : "Registrar Novo Pagamento"}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {isEditing ? "Editar dados do pagamento." : "Registrar um novo pagamento."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 max-h-[calc(90vh-200px)] overflow-y-auto px-1">
             {/* Motorista Selection */}
             <div className="space-y-2">
-              <Label htmlFor="motorista">Motorista *</Label>
+              <Label htmlFor="motorista">Proprietário / Favorecido *</Label>
               <Select
                 value={editedPagamento.motoristaId || ""}
                 onValueChange={handleMotoristaChange}
                 onOpenChange={(open) => {
                   if (open) clearFormError("motoristaId");
                 }}
+                disabled={isEditing}
               >
                 <SelectTrigger className={cn(fieldErrorClass(formErrors.motoristaId))}>
-                  <SelectValue placeholder="Selecione um motorista" />
+                  <SelectValue placeholder="Selecione um proprietário/favorecido" />
                 </SelectTrigger>
                 <SelectContent className="max-h-64 overflow-y-auto">
-                  {motoristasComPendentes.length === 0 ? (
-                    <SelectItem value="none" disabled>Nenhum motorista com pagamentos pendentes</SelectItem>
+                  {isEditing ? (
+                    <SelectItem value={editedPagamento.motoristaId || ""}>
+                      {editedPagamento.motoristaNome || "Favorecido"}
+                    </SelectItem>
+                  ) : motoristasComPendentes.length === 0 ? (
+                    <SelectItem value="none" disabled>Nenhum favorecido com pagamentos pendentes</SelectItem>
                   ) : (
                     motoristasComPendentes.map((motorista) => (
                       <SelectItem key={motorista.id} value={motorista.id}>
@@ -2145,79 +2034,47 @@ export default function Pagamentos() {
               <FieldError message={formErrors.motoristaId} />
             </div>
 
-            {/* Dados de Pagamento do Motorista */}
-            {motoristaSelecionado && (
-              <Card className="p-4 bg-muted/50">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-foreground">Dados para pagamento</p>
-                  <Badge variant="outline">
-                    {motoristaSelecionado.tipoPagamento === "pix" ? "PIX" : "Transferência"}
-                  </Badge>
-                </div>
-                {motoristaSelecionado.tipoPagamento === "pix" ? (
-                  <div className="space-y-2">
-                    <div className="text-xs text-muted-foreground">
-                      Tipo de chave: {motoristaSelecionado.chavePixTipo?.toUpperCase()}
-                    </div>
-                    <div className="font-mono text-sm bg-background px-3 py-2 rounded border">
-                      {motoristaSelecionado.chavePix}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Banco</p>
-                      <p className="font-semibold">{motoristaSelecionado.banco}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Agência</p>
-                      <p className="font-mono font-semibold">{motoristaSelecionado.agencia}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Conta</p>
-                      <p className="font-mono font-semibold">{motoristaSelecionado.conta}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Tipo</p>
-                      <p className="font-semibold">
-                        {motoristaSelecionado.tipoConta === "corrente" ? "Corrente" : "Poupança"}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )}
-
             {/* Seleção de Fretes */}
             {editedPagamento.motoristaId && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Selecione os fretes para pagamento *</Label>
-                  {fretesNaoPagos.length > 0 && (
+                  {fretesDisponiveis.length > 0 && (
                     <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                      {fretesNaoPagos.length} frete{fretesNaoPagos.length > 1 ? 's' : ''} aguardando
+                      {fretesDisponiveis.length} frete{fretesDisponiveis.length > 1 ? "s" : ""} {isEditing ? "vinculado" : "aguardando"}
                     </Badge>
                   )}
                 </div>
                 <FieldError message={formErrors.fretes} />
-                {fretesNaoPagos.length === 0 ? (
+                {fretesDisponiveis.length === 0 ? (
                   <Card className="p-4 bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900 flex items-center gap-3">
                     <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
                     <p className="text-sm text-amber-700 dark:text-amber-300">
-                      Este motorista não possui fretes pendentes de pagamento
+                      {isEditing
+                        ? "Este pagamento não possui fretes vinculados."
+                        : "Este favorecido não possui fretes pendentes de pagamento"}
                     </p>
                   </Card>
                 ) : (
                   <div className="space-y-2">
-                    {fretesNaoPagos.map((frete) => (
-                      <Card 
-                        key={frete.id} 
+                    {fretesDisponiveis.map((frete) => (
+                      <Card
+                        key={frete.id}
                         className={cn(
-                          "p-4 cursor-pointer transition-all border-2",
+                          "p-4 transition-all border-2",
                           selectedFretes.includes(frete.id)
                             ? "border-green-400 bg-green-50 dark:bg-green-950/20 shadow-sm"
                             : "border-border hover:border-green-300 dark:hover:border-green-700 hover:shadow-sm"
                         )}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleToggleFrete(frete.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleToggleFrete(frete.id);
+                          }
+                        }}
                       >
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex items-center gap-3 flex-1">
@@ -2225,12 +2082,14 @@ export default function Pagamentos() {
                               id={`frete-${frete.id}`}
                               checked={selectedFretes.includes(frete.id)}
                               onCheckedChange={() => handleToggleFrete(frete.id)}
+                              onClick={(e) => e.stopPropagation()}
                               className="h-5 w-5"
+                              disabled={isEditing}
                             />
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
                                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                                  {frete.id}
+                                  {frete.codigoFrete || frete.id}
                                 </p>
                                 <span className="text-slate-400 dark:text-slate-500">•</span>
                                 <p className="text-sm font-semibold text-blue-700 dark:text-blue-400">
@@ -2294,7 +2153,7 @@ export default function Pagamentos() {
                 <Card className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900 flex items-center gap-3">
                   <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
                   <p className="text-sm text-muted-foreground">
-                    Este motorista não possui fretes pendentes de pagamento
+                    Este favorecido não possui fretes pendentes de pagamento
                   </p>
                 </Card>
               )
@@ -2309,17 +2168,17 @@ export default function Pagamentos() {
                 <div className="space-y-3 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900/40 dark:to-slate-800/40 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
                   <p className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Detalhamento de Custos por Frete</p>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {fretesNaoPagos
+                    {fretesDisponiveis
                       .filter((f) => selectedFretes.includes(f.id))
                       .map((frete) => {
-                        const custosFrete = custosAdicionaisData.filter((c) => c.freteId === frete.id);
+                        const custosFrete = getCustosByFreteRef(frete.id);
                         const totalCustos = custosFrete.reduce((sum, c) => sum + c.valor, 0);
                         const valorLiquido = frete.valorGerado - totalCustos;
                         return (
                           <Card key={frete.id} className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{frete.id}</p>
+                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{frete.codigoFrete || frete.id}</p>
                                 <p className="text-xs text-slate-500 dark:text-slate-400">{frete.rota}</p>
                                 <div className="text-right">
                                   <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Bruto</p>
@@ -2378,14 +2237,9 @@ export default function Pagamentos() {
                           {(() => {
                             const totalDescontos = selectedFretes
                               .reduce((acc, freteId) => {
-                                return (
-                                  acc +
-                                  custosAdicionaisData
-                                    .filter((c) => c.freteId === freteId)
-                                    .reduce((sum, c) => sum + c.valor, 0)
-                                );
+                                return acc + getTotalCustosByFreteRef(freteId);
                               }, 0);
-                            return totalDescontos > 0 
+                            return totalDescontos > 0
                               ? `-R$ ${totalDescontos.toLocaleString("pt-BR")}`
                               : "R$ 0";
                           })()}
@@ -2399,7 +2253,7 @@ export default function Pagamentos() {
                         <p className="text-2xl font-bold text-green-700 dark:text-green-400">
                           R$ {(editedPagamento.valorTotal || 0).toLocaleString("pt-BR")}
                         </p>
-                        <p className="text-xs text-green-600 dark:text-green-500 mt-1">Líquido ao motorista</p>
+                        <p className="text-xs text-green-600 dark:text-green-500 mt-1">Líquido ao favorecido</p>
                       </Card>
                     </div>
                   </div>
@@ -2438,9 +2292,11 @@ export default function Pagamentos() {
                       >
                         <Calendar className="h-4 w-4 text-blue-600" />
                         {editedPagamento.dataPagamento
-                          ? new Date(
-                              editedPagamento.dataPagamento.split("/").reverse().join("-")
-                            ).toLocaleDateString("pt-BR")
+                          ? format(
+                            parseBRDateToLocalDate(editedPagamento.dataPagamento) || new Date(),
+                            "dd/MM/yyyy",
+                            { locale: ptBR }
+                          )
                           : "Selecione a data"}
                       </Button>
                     </PopoverTrigger>
@@ -2448,15 +2304,11 @@ export default function Pagamentos() {
                       <CalendarComponent
                         mode="single"
                         selected={
-                          editedPagamento.dataPagamento
-                            ? new Date(
-                                editedPagamento.dataPagamento.split("/").reverse().join("-")
-                              )
-                            : undefined
+                          parseBRDateToLocalDate(editedPagamento.dataPagamento)
                         }
                         onSelect={(date) => {
                           if (date) {
-                            const formattedDate = date.toLocaleDateString("pt-BR");
+                            const formattedDate = format(date, "dd/MM/yyyy", { locale: ptBR });
                             setEditedPagamento({
                               ...editedPagamento,
                               dataPagamento: formattedDate,
@@ -2464,7 +2316,7 @@ export default function Pagamentos() {
                           }
                         }}
                         disabled={(date) =>
-                          date > new Date() || date < new Date("2025-01-01")
+                          date > new Date() || date < new Date(2025, 0, 1)
                         }
                       />
                     </PopoverContent>
@@ -2473,13 +2325,15 @@ export default function Pagamentos() {
                 <div className="space-y-2">
                   <Label htmlFor="statusPagamento" className="text-sm font-semibold">📌 Status *</Label>
                   <Select
-                    value={editedPagamento.statusPagamento || "pendente"}
+                    value={isInternalCostFlow ? "pago" : (editedPagamento.statusPagamento || "pendente")}
                     onValueChange={(value: "pendente" | "processando" | "pago" | "cancelado") =>
+                      !isInternalCostFlow &&
                       setEditedPagamento({
                         ...editedPagamento,
                         statusPagamento: value,
                       })
                     }
+                    disabled={isInternalCostFlow}
                   >
                     <SelectTrigger className="border-2 hover:border-blue-400 transition-colors h-11">
                       <SelectValue />
@@ -2495,81 +2349,158 @@ export default function Pagamentos() {
               </div>
             </div>
 
-            {/* Método de Pagamento */}
+            {/* Método de Pagamento (somente leitura) */}
             <div className="space-y-3">
-              <Label htmlFor="metodoPagamento" className="text-sm font-semibold">💳 Método de Pagamento *</Label>
-              <Select
-                value={editedPagamento.metodoPagamento || "pix"}
-                onValueChange={(value: "pix" | "transferencia_bancaria") =>
-                  setEditedPagamento({
-                    ...editedPagamento,
-                    metodoPagamento: value,
-                  })
-                }
-              >
-                <SelectTrigger>
+              <Label htmlFor="metodoPagamento" className="text-sm font-semibold">💳 Método de Pagamento</Label>
+              <Select value={metodoPagamentoAtual} disabled>
+                <SelectTrigger id="metodoPagamento" className="border-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="transferencia_bancaria">
-                    Transferência Bancária
-                  </SelectItem>
+                  <SelectItem value="transferencia_bancaria">Transferência Bancária</SelectItem>
                 </SelectContent>
               </Select>
+
+              <Card
+                className={cn(
+                  "p-4 border",
+                  metodoPagamentoAtual === "pix"
+                    ? "bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-900"
+                    : "bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900"
+                )}
+              >
+                {isInternalCostFlow ? (
+                  <p className="text-sm text-muted-foreground">
+                    Método definido pelo cadastro do favorecido (fluxo de custo interno).
+                  </p>
+                ) : metodoPagamentoAtual === "pix" ? (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <p className="text-muted-foreground">Dados PIX do favorecido (cadastro)</p>
+                      <Badge variant="outline">PIX</Badge>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Tipo de chave</p>
+                        <p className="font-semibold">
+                          {String(motoristaSelecionado?.chavePixTipo || "Não informado").toUpperCase()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Chave PIX</p>
+                        <p className="font-mono font-semibold break-all">
+                          {motoristaSelecionado?.chavePix || "Não informada"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <p className="text-muted-foreground">Dados bancários do favorecido (cadastro)</p>
+                      <Badge variant="outline">Transferência</Badge>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Banco</p>
+                        <p className="font-semibold">{motoristaSelecionado?.banco || "Não informado"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Agência</p>
+                        <p className="font-mono font-semibold">{motoristaSelecionado?.agencia || "Não informada"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Conta</p>
+                        <p className="font-mono font-semibold">{motoristaSelecionado?.conta || "Não informada"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Tipo de conta</p>
+                        <p className="font-semibold">
+                          {motoristaSelecionado?.tipoConta === "corrente"
+                            ? "Corrente"
+                            : motoristaSelecionado?.tipoConta === "poupanca"
+                              ? "Poupança"
+                              : "Não informado"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Card>
             </div>
 
             <Separator />
 
             {/* Comprovante Upload */}
-            <div className="space-y-3">
-              <Label>Comprovante de Pagamento</Label>
-              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 hover:border-muted-foreground/50 transition-colors">
-                <input
-                  type="file"
-                  id="comprovante"
-                  className="hidden"
-                  onChange={handleFileChange}
-                  accept=".pdf,.jpg,.jpeg,.png,.webp"
-                />
-                <label
-                  htmlFor="comprovante"
-                  className="cursor-pointer flex flex-col items-center gap-2"
-                >
-                  <Paperclip className="h-6 w-6 text-muted-foreground/60" />
-                  <div className="text-center">
-                    <p className="text-sm font-medium">
-                      {selectedFile ? selectedFile.name : "Clique para selecionar ou arraste"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      PDF ou imagem (JPG, PNG, WEBP) - máx. 5MB
-                    </p>
-                  </div>
-                </label>
+            {isInternalCostFlow ? (
+              <div className="space-y-3">
+                <Label>Fechamento interno</Label>
+                <Card className="p-4 border-primary/30 bg-primary/5">
+                  <Button
+                    type="button"
+                    className={cn("w-full h-12 text-base font-semibold", isInternalCostConfirmed && "bg-green-600 hover:bg-green-700")}
+                    onClick={() => setIsInternalCostConfirmed(true)}
+                  >
+                    {isInternalCostConfirmed
+                      ? "Fechamento de custo interno confirmado"
+                      : "Confirmar Fechamento de Custo Interno"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Este fluxo dispensa comprovante PIX e registra automaticamente a despesa interna.
+                  </p>
+                </Card>
               </div>
-              {selectedFile && (
-                <div className="rounded-lg border border-muted p-3 bg-muted/30">
-                  {selectedFileIsImage && selectedFilePreview ? (
-                    <img
-                      src={selectedFilePreview}
-                      alt="Preview do comprovante"
-                      className="max-h-48 w-full rounded-md object-contain"
-                    />
-                  ) : selectedFileIsPdf && selectedFilePreview ? (
-                    <iframe
-                      src={selectedFilePreview}
-                      title="Preview do comprovante"
-                      className="h-64 w-full rounded-md border"
-                    />
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <FileText className="h-4 w-4" />
-                      <span>Preview não disponível para este arquivo.</span>
+            ) : (
+              <div className="space-y-3">
+                <Label>Comprovante de Pagamento</Label>
+                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 hover:border-muted-foreground/50 transition-colors">
+                  <input
+                    type="file"
+                    id="comprovante"
+                    className="hidden"
+                    onChange={handleFileChange}
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  />
+                  <label
+                    htmlFor="comprovante"
+                    className="cursor-pointer flex flex-col items-center gap-2"
+                  >
+                    <Paperclip className="h-6 w-6 text-muted-foreground/60" />
+                    <div className="text-center">
+                      <p className="text-sm font-medium">
+                        {selectedFile ? selectedFile.name : "Clique para selecionar ou arraste"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PDF ou imagem (JPG, PNG, WEBP) - máx. 5MB
+                      </p>
                     </div>
-                  )}
+                  </label>
                 </div>
-              )}
-            </div>
+                {selectedFile && (
+                  <div className="rounded-lg border border-muted p-3 bg-muted/30">
+                    {selectedFileIsImage && selectedFilePreview ? (
+                      <img
+                        src={selectedFilePreview}
+                        alt="Preview do comprovante"
+                        className="max-h-48 w-full rounded-md object-contain"
+                      />
+                    ) : selectedFileIsPdf && selectedFilePreview ? (
+                      <iframe
+                        src={selectedFilePreview}
+                        title="Preview do comprovante"
+                        className="h-64 w-full rounded-md border"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <FileText className="h-4 w-4" />
+                        <span>Preview não disponível para este arquivo.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Observações */}
             <div className="space-y-2">
@@ -2589,7 +2520,20 @@ export default function Pagamentos() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="flex-col sm:flex-row gap-3 items-center justify-between mt-4">
+            <div className="flex items-center space-x-2 mr-auto pl-1">
+              <Checkbox
+                id="autoEmitirGuia"
+                checked={autoEmitirGuia}
+                onCheckedChange={(checked) => setAutoEmitirGuia(checked === true)}
+              />
+              <label
+                htmlFor="autoEmitirGuia"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-muted-foreground select-none"
+              >
+                Emitir Guia em PDF após salvar
+              </label>
+            </div>
             <ModalSubmitFooter
               onCancel={() => {
                 setIsModalOpen(false);

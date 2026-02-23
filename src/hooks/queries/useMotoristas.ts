@@ -32,7 +32,7 @@ export function useAtualizarMotorista() {
     mutationFn: ({ id, payload }) => motoristasService.atualizarMotorista(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: MOTORISTAS_QUERY_KEY });
-      queryClient.invalidateQueries({ queryKey: ["frota"] });
+      queryClient.invalidateQueries({ queryKey: ["caminhoes"] });
     },
   });
 }
