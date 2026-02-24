@@ -1,5 +1,5 @@
 import { useShake } from "@/hooks/useShake";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -703,6 +703,23 @@ export default function Pagamentos() {
     mutationFn: pagamentosService.deletarPagamento,
     onSuccess: async (response) => {
       if (response.success) {
+        // If we have fretes remembered, clear their pagamento_id on the backend
+        const fretesToUnlink = fretesToUnlinkRef.current || [];
+        if (fretesToUnlink.length > 0) {
+          try {
+            await Promise.all(
+              fretesToUnlink.map((fid) =>
+                fretesService.atualizarFrete(String(fid), { pagamento_id: null }).catch((e) => {
+                  console.error("Erro ao desassociar frete após exclusão de pagamento", fid, e);
+                })
+              )
+            );
+          } catch (e) {
+            console.error("Erro ao desassociar alguns fretes após exclusão de pagamento", e);
+          }
+          fretesToUnlinkRef.current = [];
+        }
+
         queryClient.invalidateQueries({ queryKey: ["pagamentos"] });
         if (usePendentesEndpoint && motoristaIdForPendentes) {
           queryClient.invalidateQueries({ queryKey: ["fretes", "pendentes", motoristaIdForPendentes] });
@@ -723,6 +740,7 @@ export default function Pagamentos() {
   });
 
   const [confirmDeletePagamento, setConfirmDeletePagamento] = useState<PagamentoMotorista | null>(null);
+  const fretesToUnlinkRef = useRef<string[]>([]);
 
   const handleDeletePagamento = (pagamento: PagamentoMotorista) => {
     setConfirmDeletePagamento(pagamento);
@@ -730,6 +748,8 @@ export default function Pagamentos() {
 
   const handleConfirmDeletePagamento = () => {
     if (!confirmDeletePagamento) return;
+    // remember fretes to unlink in DB after deletion
+    fretesToUnlinkRef.current = (confirmDeletePagamento.fretesSelecionados || []).map((f: any) => String(f));
     deleteMutation.mutate(String(confirmDeletePagamento.id));
     setConfirmDeletePagamento(null);
   };

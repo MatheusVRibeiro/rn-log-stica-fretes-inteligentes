@@ -227,7 +227,7 @@ export function FreteDetailsModal({
                                 isCustoFromFrete(c.frete_id, selectedFrete.id, selectedFrete.codigoFrete)
                             );
                             const fretesCustosOrdenados = [...fretesCustos].sort(
-                                (a, b) => parseBRDateToLocalDate(b.data).getTime() - parseBRDateToLocalDate(a.data).getTime()
+                                (a, b) => (parseBRDateToLocalDate(b.data) || new Date(0)).getTime() - (parseBRDateToLocalDate(a.data) || new Date(0)).getTime()
                             );
                             const totalCustos = fretesCustos.reduce((sum, c) => sum + toNumber(c.valor), 0);
 

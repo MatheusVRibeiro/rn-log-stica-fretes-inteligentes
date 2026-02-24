@@ -426,7 +426,7 @@ export const isCustoFromFrete = (
 export const formatDateBRDisplay = (value: string) => {
   if (!value) return "";
   const date = parseBRDateToLocalDate(value);
-  if (isNaN(date.getTime())) return value;
+  if (!date || isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
