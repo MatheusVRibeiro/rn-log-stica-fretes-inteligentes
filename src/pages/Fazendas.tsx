@@ -605,578 +605,578 @@ export default function Fazendas() {
           </div>
         </div>
       ) : (
-      <div className="space-y-6">
-        <PageHeader
-          title="Produção de Fazendas"
-          actions={
-            <div className="hidden lg:flex items-center gap-3">
-              <PeriodoFilter
-                tipoVisualizacao={tipoVisualizacao}
-                selectedPeriodo={selectedPeriodo}
-                periodosDisponiveis={periodosDisponiveis}
-                formatPeriodoLabel={formatPeriodoLabel}
-                onTipoChange={setTipoVisualizacao}
-                onPeriodoChange={setSelectedPeriodo}
-              />
-              <Button onClick={handleOpenNewModal} size="lg" className="shadow-lg">
-                <Plus className="h-4 w-4 mr-2" />
-                Nova Fazenda
-              </Button>
-            </div>
-          }
-        />
-
-        {/* Cards Resumo - Melhorados */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-          <Card className="overflow-hidden border-l-4 border-l-green-500 hover:shadow-lg transition-shadow">
-            <CardContent className="p-4 md:p-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-xs md:text-sm font-medium text-muted-foreground">Fazendas no período</p>
-                  <p className="text-2xl md:text-3xl font-bold tracking-tight">{fazendasFiltradas.length}</p>
-                  <p className="text-[11px] md:text-xs text-green-600 flex items-center gap-1">
-                    <Sparkles className="h-3 w-3" />
-                    Produtoras ativas
-                  </p>
-                </div>
-                <div className="h-10 w-10 md:h-14 md:w-14 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <MapPin className="h-5 w-5 md:h-7 md:w-7 text-green-600" />
-                </div>
+        <div className="space-y-6">
+          <PageHeader
+            title="Produção de Fazendas"
+            actions={
+              <div className="hidden lg:flex items-center gap-3">
+                <PeriodoFilter
+                  tipoVisualizacao={tipoVisualizacao}
+                  selectedPeriodo={selectedPeriodo}
+                  periodosDisponiveis={periodosDisponiveis}
+                  formatPeriodoLabel={formatPeriodoLabel}
+                  onTipoChange={setTipoVisualizacao}
+                  onPeriodoChange={setSelectedPeriodo}
+                />
+                <Button onClick={handleOpenNewModal} size="lg" className="shadow-lg">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nova Fazenda
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+            }
+          />
 
-          <Card className="overflow-hidden border-l-4 border-l-blue-500 hover:shadow-lg transition-shadow">
-            <CardContent className="p-4 md:p-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-xs md:text-sm font-medium text-muted-foreground">Sacas Carregadas</p>
-                  <p className="text-2xl md:text-3xl font-bold tracking-tight">
-                    {fazendas
-                      .reduce((acc, p) => acc + toNumber(p.total_sacas_carregadas), 0)
-                      .toLocaleString("pt-BR")}
-                  </p>
-                  <p className="text-[11px] md:text-xs text-blue-600 flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3" />
-                    Produção acumulada
-                  </p>
-                </div>
-                <div className="h-10 w-10 md:h-14 md:w-14 rounded-full bg-blue-500/10 flex items-center justify-center">
-                  <Package className="h-5 w-5 md:h-7 md:w-7 text-blue-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden border-l-4 border-l-purple-500 hover:shadow-lg transition-shadow">
-            <CardContent className="p-4 md:p-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-xs md:text-sm font-medium text-muted-foreground">Toneladas</p>
-                  <p className="text-2xl md:text-3xl font-bold tracking-tight">
-                    {fazendas
-                      .reduce((acc, p) => acc + toNumber(p.total_toneladas), 0)
-                      .toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
-                  </p>
-                  <p className="text-[11px] md:text-xs text-purple-600 flex items-center gap-1">
-                    <Weight className="h-3 w-3" />
-                    Peso total carregado
-                  </p>
-                </div>
-                <div className="h-10 w-10 md:h-14 md:w-14 rounded-full bg-purple-500/10 flex items-center justify-center">
-                  <Weight className="h-5 w-5 md:h-7 md:w-7 text-purple-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden border-l-4 border-l-green-500 hover:shadow-lg transition-shadow">
-            <CardContent className="p-4 md:p-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-xs md:text-sm font-medium text-muted-foreground">Faturamento Total</p>
-                  <p className="text-2xl md:text-3xl font-bold tracking-tight text-green-600 dark:text-green-500">
-                    R$ {fazendasFiltradas
-                      .reduce((acc, p) => acc + toNumber(p.faturamento_total), 0)
-                      .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  <p className="text-[11px] md:text-xs text-green-600 dark:text-green-500 flex items-center gap-1">
-                    <DollarSign className="h-3 w-3" />
-                    Receita acumulada
-                  </p>
-                </div>
-                <div className="h-10 w-10 md:h-14 md:w-14 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <DollarSign className="h-5 w-5 md:h-7 md:w-7 text-green-600 dark:text-green-500" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Mobile Filters */}
-        <div className="lg:hidden">
-          <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-            <SheetTrigger asChild>
-              <Button variant="outline" className="w-full gap-2">
-                <Filter className="h-4 w-4" />
-                Filtros
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="h-[80vh]">
-              <SheetHeader>
-                <SheetTitle>Filtros e Período</SheetTitle>
-              </SheetHeader>
-              <div className="mt-6 space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Período</Label>
-                  <PeriodoFilter
-                    tipoVisualizacao={tipoVisualizacao}
-                    selectedPeriodo={selectedPeriodo}
-                    periodosDisponiveis={periodosDisponiveis}
-                    formatPeriodoLabel={formatPeriodoLabel}
-                    onTipoChange={setTipoVisualizacao}
-                    onPeriodoChange={setSelectedPeriodo}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Buscar</Label>
-                  <Input
-                    placeholder="Buscar por fazenda, proprietário, mercadoria..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <div className="pt-2 flex gap-2">
-                  <Button variant="outline" onClick={clearFilters} className="flex-1">
-                    Limpar
-                  </Button>
-                  <Button onClick={() => setFiltersOpen(false)} className="flex-1">
-                    Aplicar
-                  </Button>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
-        </div>
-
-        {/* Desktop Filters */}
-        <FilterBar
-          className="hidden lg:flex"
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Buscar por fazenda, proprietário, mercadoria..."
-        />
-
-        {/* FAB: Nova Fazenda (Mobile) */}
-        <Button
-          onClick={handleOpenNewModal}
-          className="lg:hidden fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg p-0"
-          size="icon"
-          aria-label="Nova Fazenda"
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
-
-        {/* Grid de Fazendas - Cards Modernos */}
-        <div className="space-y-8">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-blue-700 dark:text-blue-400">
-                Colheitas em andamento
-              </h3>
-              <Badge className="bg-blue-600 text-white">{fazendasAtivas.length} fazenda(s)</Badge>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {fazendasAtivas.map((fazenda) => {
-            const precoPorSaca =
-              (toNumber(fazenda.preco_por_tonelada) * toNumber(fazenda.peso_medio_saca)) / 1000;
-            const hasProducao = toNumber(fazenda.total_sacas_carregadas) > 0;
-            
-            return (
-              <Card 
-                key={fazenda.id} 
-                className="group hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden border-2 hover:border-primary/50"
-                onClick={() => setSelectedProducao(fazenda)}
-              >
-                <CardHeader className="bg-gradient-to-br from-primary/5 via-primary/3 to-transparent pb-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                      <Avatar className="h-12 w-12 border-2 border-background shadow-md">
-                        <AvatarFallback className="bg-gradient-to-br from-green-500 to-green-600 text-white font-bold text-lg">
-                          {fazenda.fazenda.substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="space-y-1">
-                        <CardTitle className="text-lg leading-tight group-hover:text-primary transition-colors">
-                          {fazenda.fazenda}
-                        </CardTitle>
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <MapPin className="h-3.5 w-3.5" />
-                          {fazenda.estado || "-"}
-                        </div>
-                      </div>
-                    </div>
-                    {fazenda.colheita_finalizada ? (
-                      <Badge className="bg-emerald-600 text-white shadow-sm">
-                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                        Finalizada
-                      </Badge>
-                    ) : (
-                      hasProducao && (
-                        <Badge variant="default" className="shadow-sm">
-                          <BarChart3 className="h-3 w-3 mr-1" />
-                          Ativa
-                        </Badge>
-                      )
-                    )}
-                  </div>
-                </CardHeader>
-
-                <CardContent className="pt-6 space-y-4">
-                  {/* Proprietário e Mercadoria */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Proprietário:</span>
-                      <span className="font-medium">{fazenda.proprietario}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4 text-blue-600" />
-                        <span className="font-semibold text-sm">{fazenda.mercadoria}</span>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {fazenda.variedade}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  {/* Estatísticas de Produção */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Package className="h-3 w-3" />
-                        Sacas
-                      </p>
-                      <p className="text-2xl font-bold text-blue-600">
-                        {toNumber(fazenda.total_sacas_carregadas).toLocaleString("pt-BR")}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Weight className="h-3 w-3" />
-                        Toneladas
-                      </p>
-                      <p className="text-2xl font-bold text-purple-600">
-                        {toNumber(fazenda.total_toneladas).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Faturamento */}
-                  <div className="p-3 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/10 rounded-lg border border-green-200/50 dark:border-green-800/50">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-green-700 dark:text-green-400 flex items-center gap-1">
-                        <DollarSign className="h-3 w-3" />
-                        Faturamento Total
-                      </span>
-                    </div>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-500">
-                      R$ {toNumber(fazenda.faturamento_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          {/* Cards Resumo - Melhorados */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            <Card className="overflow-hidden border-l-4 border-l-green-500 hover:shadow-lg transition-shadow">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">Fazendas no período</p>
+                    <p className="text-2xl md:text-3xl font-bold tracking-tight">{fazendasFiltradas.length}</p>
+                    <p className="text-[11px] md:text-xs text-green-600 flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      Produtoras ativas
                     </p>
-                    <div className="mt-2 pt-2 border-t border-green-200/50 dark:border-green-800/50 space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Preço/ton:</span>
-                        <span className="font-semibold">R$ {toNumber(fazenda.preco_por_tonelada).toLocaleString("pt-BR")}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Preço/saca:</span>
-                        <span className="font-semibold">R$ {precoPorSaca.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
-                      </div>
-                    </div>
                   </div>
-
-                  {/* Footer Info */}
-                  <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      Safra {fazenda.safra}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      Último frete: <span className="font-medium">
-                        {fazenda.ultimo_frete_data 
-                          ? format(new Date(fazenda.ultimo_frete_data), "dd/MM/yyyy", { locale: ptBR })
-                          : "Nunca"}
-                        </span>
-                    </div>
+                  <div className="h-10 w-10 md:h-14 md:w-14 rounded-full bg-green-500/10 flex items-center justify-center">
+                    <MapPin className="h-5 w-5 md:h-7 md:w-7 text-green-600" />
                   </div>
-                </CardContent>
-                </Card>
-              );
-              })}
-            </div>
-            {fazendasFinalizadas.length > 0 && (
-              <div className="mt-8">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300">Colheitas finalizadas</h3>
-                  <Badge className="bg-emerald-600 text-white">{fazendasFinalizadas.length} fazenda(s)</Badge>
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {fazendasFinalizadas.map((fazenda) => {
-                    const precoPorSaca =
-                      (toNumber(fazenda.preco_por_tonelada) * toNumber(fazenda.peso_medio_saca)) / 1000;
-                    const hasProducao = toNumber(fazenda.total_sacas_carregadas) > 0;
+              </CardContent>
+            </Card>
 
-                    return (
-                      <Card
-                        key={fazenda.id}
-                        className="group hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden border-2 hover:border-primary/50"
-                        onClick={() => setSelectedProducao(fazenda)}
-                      >
-                        <CardHeader className="bg-gradient-to-br from-primary/5 via-primary/3 to-transparent pb-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start gap-3">
-                              <Avatar className="h-12 w-12 border-2 border-background shadow-md">
-                                <AvatarFallback className="bg-gradient-to-br from-green-500 to-green-600 text-white font-bold text-lg">
-                                  {fazenda.fazenda.substring(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="space-y-1">
-                                <CardTitle className="text-lg leading-tight group-hover:text-primary transition-colors">
-                                  {fazenda.fazenda}
-                                </CardTitle>
-                                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                  <MapPin className="h-3.5 w-3.5" />
-                                  {fazenda.estado || "-"}
-                                </div>
-                              </div>
-                            </div>
-                            {fazenda.colheita_finalizada ? (
-                              <Badge className="bg-emerald-600 text-white shadow-sm">
-                                <CheckCircle2 className="h-3 w-3 mr-1" />
-                                Finalizada
-                              </Badge>
-                            ) : (
-                              hasProducao && (
-                                <Badge variant="default" className="shadow-sm">
-                                  <BarChart3 className="h-3 w-3 mr-1" />
-                                  Ativa
-                                </Badge>
-                              )
-                            )}
-                          </div>
-                        </CardHeader>
-
-                        <CardContent className="pt-6 space-y-4">
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2 text-sm">
-                              <User className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-muted-foreground">Proprietário:</span>
-                              <span className="font-medium">{fazenda.proprietario}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Package className="h-4 w-4 text-blue-600" />
-                                <span className="font-semibold text-sm">{fazenda.mercadoria}</span>
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {fazenda.variedade}
-                              </Badge>
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Package className="h-3 w-3" />
-                                Sacas
-                              </p>
-                              <p className="text-2xl font-bold text-blue-600">
-                                {toNumber(fazenda.total_sacas_carregadas).toLocaleString("pt-BR")}
-                              </p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Weight className="h-3 w-3" />
-                                Toneladas
-                              </p>
-                              <p className="text-2xl font-bold text-purple-600">
-                                {toNumber(fazenda.total_toneladas).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="p-3 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/10 rounded-lg border border-green-200/50 dark:border-green-800/50">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-medium text-green-700 dark:text-green-400 flex items-center gap-1">
-                                <DollarSign className="h-3 w-3" />
-                                Faturamento Total
-                              </span>
-                            </div>
-                            <p className="text-2xl font-bold text-green-600 dark:text-green-500">
-                              R$ {toNumber(fazenda.faturamento_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </p>
-                            <div className="mt-2 pt-2 border-t border-green-200/50 dark:border-green-800/50 space-y-1">
-                              <div className="flex justify-between text-xs">
-                                <span className="text-muted-foreground">Preço/ton:</span>
-                                <span className="font-semibold">R$ {toNumber(fazenda.preco_por_tonelada).toLocaleString("pt-BR")}</span>
-                              </div>
-                              <div className="flex justify-between text-xs">
-                                <span className="text-muted-foreground">Preço/saca:</span>
-                                <span className="font-semibold">R$ {precoPorSaca.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              Safra {fazenda.safra}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              Último frete: <span className="font-medium">
-                                {fazenda.ultimo_frete_data 
-                                  ? format(new Date(fazenda.ultimo_frete_data), "dd/MM/yyyy", { locale: ptBR })
-                                  : "Nunca"}
-                                </span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+            <Card className="overflow-hidden border-l-4 border-l-blue-500 hover:shadow-lg transition-shadow">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">Sacas Carregadas</p>
+                    <p className="text-2xl md:text-3xl font-bold tracking-tight">
+                      {fazendas
+                        .reduce((acc, p) => acc + toNumber(p.total_sacas_carregadas), 0)
+                        .toLocaleString("pt-BR")}
+                    </p>
+                    <p className="text-[11px] md:text-xs text-blue-600 flex items-center gap-1">
+                      <TrendingUp className="h-3 w-3" />
+                      Produção acumulada
+                    </p>
+                  </div>
+                  <div className="h-10 w-10 md:h-14 md:w-14 rounded-full bg-blue-500/10 flex items-center justify-center">
+                    <Package className="h-5 w-5 md:h-7 md:w-7 text-blue-600" />
+                  </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border-l-4 border-l-purple-500 hover:shadow-lg transition-shadow">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">Toneladas</p>
+                    <p className="text-2xl md:text-3xl font-bold tracking-tight">
+                      {fazendas
+                        .reduce((acc, p) => acc + toNumber(p.total_toneladas), 0)
+                        .toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                    </p>
+                    <p className="text-[11px] md:text-xs text-purple-600 flex items-center gap-1">
+                      <Weight className="h-3 w-3" />
+                      Peso total carregado
+                    </p>
+                  </div>
+                  <div className="h-10 w-10 md:h-14 md:w-14 rounded-full bg-purple-500/10 flex items-center justify-center">
+                    <Weight className="h-5 w-5 md:h-7 md:w-7 text-purple-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border-l-4 border-l-green-500 hover:shadow-lg transition-shadow">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">Faturamento Total</p>
+                    <p className="text-2xl md:text-3xl font-bold tracking-tight text-green-600 dark:text-green-500">
+                      R$ {fazendasFiltradas
+                        .reduce((acc, p) => acc + toNumber(p.faturamento_total), 0)
+                        .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[11px] md:text-xs text-green-600 dark:text-green-500 flex items-center gap-1">
+                      <DollarSign className="h-3 w-3" />
+                      Receita acumulada
+                    </p>
+                  </div>
+                  <div className="h-10 w-10 md:h-14 md:w-14 rounded-full bg-green-500/10 flex items-center justify-center">
+                    <DollarSign className="h-5 w-5 md:h-7 md:w-7 text-green-600 dark:text-green-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Mobile Filters */}
+          <div className="lg:hidden">
+            <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" className="w-full gap-2">
+                  <Filter className="h-4 w-4" />
+                  Filtros
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="h-[80vh]">
+                <SheetHeader>
+                  <SheetTitle>Filtros e Período</SheetTitle>
+                </SheetHeader>
+                <div className="mt-6 space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Período</Label>
+                    <PeriodoFilter
+                      tipoVisualizacao={tipoVisualizacao}
+                      selectedPeriodo={selectedPeriodo}
+                      periodosDisponiveis={periodosDisponiveis}
+                      formatPeriodoLabel={formatPeriodoLabel}
+                      onTipoChange={setTipoVisualizacao}
+                      onPeriodoChange={setSelectedPeriodo}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Buscar</Label>
+                    <Input
+                      placeholder="Buscar por fazenda, proprietário, mercadoria..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="pt-2 flex gap-2">
+                    <Button variant="outline" onClick={clearFilters} className="flex-1">
+                      Limpar
+                    </Button>
+                    <Button onClick={() => setFiltersOpen(false)} className="flex-1">
+                      Aplicar
+                    </Button>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          {/* Desktop Filters */}
+          <FilterBar
+            className="hidden lg:flex"
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Buscar por fazenda, proprietário, mercadoria..."
+          />
+
+          {/* FAB: Nova Fazenda (Mobile) */}
+          <Button
+            onClick={handleOpenNewModal}
+            className="lg:hidden fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg p-0"
+            size="icon"
+            aria-label="Nova Fazenda"
+          >
+            <Plus className="h-6 w-6" />
+          </Button>
+
+          {/* Grid de Fazendas - Cards Modernos */}
+          <div className="space-y-8">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-blue-700 dark:text-blue-400">
+                  Colheitas em andamento
+                </h3>
+                <Badge className="bg-blue-600 text-white">{fazendasAtivas.length} fazenda(s)</Badge>
               </div>
-            )}
-            {/* Pagination */}
-            {totalPages > 1 && (
-                            <>
-                              {/* Mobile Pagination */}
-                              <div className="mt-6 md:hidden">
-                                <div className="flex items-center justify-between mb-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                                    disabled={currentPage === 1}
-                                  >
-                                    Anterior
-                                  </Button>
-                                  <span className="text-sm text-muted-foreground font-medium">
-                                    {currentPage} / {totalPages}
-                                  </span>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                                    disabled={currentPage === totalPages}
-                                  >
-                                    Próxima
-                                  </Button>
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                {fazendasAtivas.map((fazenda) => {
+                  const precoPorSaca =
+                    (toNumber(fazenda.preco_por_tonelada) * toNumber(fazenda.peso_medio_saca)) / 1000;
+                  const hasProducao = toNumber(fazenda.total_sacas_carregadas) > 0;
+
+                  return (
+                    <Card
+                      key={fazenda.id}
+                      className="group hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden border-2 hover:border-primary/50"
+                      onClick={() => setSelectedProducao(fazenda)}
+                    >
+                      <CardHeader className="bg-gradient-to-br from-primary/5 via-primary/3 to-transparent pb-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <Avatar className="h-12 w-12 border-2 border-background shadow-md">
+                              <AvatarFallback className="bg-gradient-to-br from-green-500 to-green-600 text-white font-bold text-lg">
+                                {fazenda.fazenda.substring(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="space-y-1">
+                              <CardTitle className="text-lg leading-tight group-hover:text-primary transition-colors">
+                                {fazenda.fazenda}
+                              </CardTitle>
+                              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                <MapPin className="h-3.5 w-3.5" />
+                                {fazenda.estado || "-"}
+                              </div>
+                            </div>
+                          </div>
+                          {fazenda.colheita_finalizada ? (
+                            <Badge className="bg-emerald-600 text-white shadow-sm">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Finalizada
+                            </Badge>
+                          ) : (
+                            hasProducao && (
+                              <Badge variant="default" className="shadow-sm">
+                                <BarChart3 className="h-3 w-3 mr-1" />
+                                Ativa
+                              </Badge>
+                            )
+                          )}
+                        </div>
+                      </CardHeader>
+
+                      <CardContent className="pt-6 space-y-4">
+                        {/* Proprietário e Mercadoria */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 text-sm">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">Proprietário:</span>
+                            <span className="font-medium">{fazenda.proprietario}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4 text-blue-600" />
+                              <span className="font-semibold text-sm">{fazenda.mercadoria}</span>
+                            </div>
+                            <Badge variant="outline" className="text-xs">
+                              {fazenda.variedade}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        {/* Estatísticas de Produção */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Package className="h-3 w-3" />
+                              Sacas
+                            </p>
+                            <p className="text-2xl font-bold text-blue-600">
+                              {toNumber(fazenda.total_sacas_carregadas).toLocaleString("pt-BR")}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Weight className="h-3 w-3" />
+                              Toneladas
+                            </p>
+                            <p className="text-2xl font-bold text-purple-600">
+                              {toNumber(fazenda.total_toneladas).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Faturamento */}
+                        <div className="p-3 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/10 rounded-lg border border-green-200/50 dark:border-green-800/50">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-green-700 dark:text-green-400 flex items-center gap-1">
+                              <DollarSign className="h-3 w-3" />
+                              Faturamento Total
+                            </span>
+                          </div>
+                          <p className="text-2xl font-bold text-green-600 dark:text-green-500">
+                            R$ {toNumber(fazenda.faturamento_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </p>
+                          <div className="mt-2 pt-2 border-t border-green-200/50 dark:border-green-800/50 space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Preço/ton:</span>
+                              <span className="font-semibold">R$ {toNumber(fazenda.preco_por_tonelada).toLocaleString("pt-BR")}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Preço/saca:</span>
+                              <span className="font-semibold">R$ {precoPorSaca.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer Info */}
+                        <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Safra {fazenda.safra}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            Último frete: <span className="font-medium">
+                              {fazenda.ultimo_frete_data
+                                ? format(new Date(fazenda.ultimo_frete_data), "dd/MM/yyyy", { locale: ptBR })
+                                : "Nunca"}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+              {fazendasFinalizadas.length > 0 && (
+                <div className="mt-8">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300">Colheitas finalizadas</h3>
+                    <Badge className="bg-emerald-600 text-white">{fazendasFinalizadas.length} fazenda(s)</Badge>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {fazendasFinalizadas.map((fazenda) => {
+                      const precoPorSaca =
+                        (toNumber(fazenda.preco_por_tonelada) * toNumber(fazenda.peso_medio_saca)) / 1000;
+                      const hasProducao = toNumber(fazenda.total_sacas_carregadas) > 0;
+
+                      return (
+                        <Card
+                          key={fazenda.id}
+                          className="group hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden border-2 hover:border-primary/50"
+                          onClick={() => setSelectedProducao(fazenda)}
+                        >
+                          <CardHeader className="bg-gradient-to-br from-primary/5 via-primary/3 to-transparent pb-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-start gap-3">
+                                <Avatar className="h-12 w-12 border-2 border-background shadow-md">
+                                  <AvatarFallback className="bg-gradient-to-br from-green-500 to-green-600 text-white font-bold text-lg">
+                                    {fazenda.fazenda.substring(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="space-y-1">
+                                  <CardTitle className="text-lg leading-tight group-hover:text-primary transition-colors">
+                                    {fazenda.fazenda}
+                                  </CardTitle>
+                                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                    <MapPin className="h-3.5 w-3.5" />
+                                    {fazenda.estado || "-"}
+                                  </div>
                                 </div>
-                                <p className="text-xs text-center text-muted-foreground">
-                                  {filteredData.length} registros
+                              </div>
+                              {fazenda.colheita_finalizada ? (
+                                <Badge className="bg-emerald-600 text-white shadow-sm">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Finalizada
+                                </Badge>
+                              ) : (
+                                hasProducao && (
+                                  <Badge variant="default" className="shadow-sm">
+                                    <BarChart3 className="h-3 w-3 mr-1" />
+                                    Ativa
+                                  </Badge>
+                                )
+                              )}
+                            </div>
+                          </CardHeader>
+
+                          <CardContent className="pt-6 space-y-4">
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2 text-sm">
+                                <User className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-muted-foreground">Proprietário:</span>
+                                <span className="font-medium">{fazenda.proprietario}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-blue-600" />
+                                  <span className="font-semibold text-sm">{fazenda.mercadoria}</span>
+                                </div>
+                                <Badge variant="outline" className="text-xs">
+                                  {fazenda.variedade}
+                                </Badge>
+                              </div>
+                            </div>
+
+                            <Separator />
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Package className="h-3 w-3" />
+                                  Sacas
+                                </p>
+                                <p className="text-2xl font-bold text-blue-600">
+                                  {toNumber(fazenda.total_sacas_carregadas).toLocaleString("pt-BR")}
                                 </p>
                               </div>
-
-                              {/* Desktop Pagination */}
-                              <div className="mt-6 hidden md:flex justify-center">
-                                <Pagination>
-                                  <PaginationContent>
-                                    <PaginationItem>
-                                      <PaginationPrevious
-                                        href="#"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          setCurrentPage(Math.max(1, currentPage - 1));
-                                        }}
-                                        className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                                      />
-                                    </PaginationItem>
-
-                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                                      const isCurrentPage = page === currentPage;
-                                      const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
-
-                                      if (!isVisible) {
-                                        return null;
-                                      }
-
-                                      if (page === 2 && currentPage > 3) {
-                                        return (
-                                          <PaginationItem key="ellipsis-start">
-                                            <PaginationEllipsis />
-                                          </PaginationItem>
-                                        );
-                                      }
-
-                                      if (page === totalPages - 1 && currentPage < totalPages - 2) {
-                                        return (
-                                          <PaginationItem key="ellipsis-end">
-                                            <PaginationEllipsis />
-                                          </PaginationItem>
-                                        );
-                                      }
-
-                                      return (
-                                        <PaginationItem key={page}>
-                                          <PaginationLink
-                                            href="#"
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              setCurrentPage(page);
-                                            }}
-                                            isActive={isCurrentPage}
-                                          >
-                                            {page}
-                                          </PaginationLink>
-                                        </PaginationItem>
-                                      );
-                                    })}
-
-                                    <PaginationItem>
-                                      <PaginationNext
-                                        href="#"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          setCurrentPage(Math.min(totalPages, currentPage + 1));
-                                        }}
-                                        className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                                      />
-                                    </PaginationItem>
-                                  </PaginationContent>
-                                </Pagination>
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Weight className="h-3 w-3" />
+                                  Toneladas
+                                </p>
+                                <p className="text-2xl font-bold text-purple-600">
+                                  {toNumber(fazenda.total_toneladas).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                                </p>
                               </div>
-                            </>
-                          )}
-          </div>
-        </div>
+                            </div>
 
-        {/* Empty State */}
-        {filteredData.length === 0 && (
-          <Card className="p-12">
-            <div className="text-center space-y-4">
-              <div className="h-16 w-16 rounded-full bg-muted mx-auto flex items-center justify-center">
-                <Package className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg mb-1">Nenhuma fazenda encontrada</h3>
-                <p className="text-muted-foreground text-sm">
-                  Tente ajustar os filtros ou cadastre uma nova fazenda
-                </p>
-              </div>
-              <Button onClick={handleOpenNewModal} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Cadastrar Fazenda
-              </Button>
+                            <div className="p-3 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/10 rounded-lg border border-green-200/50 dark:border-green-800/50">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-medium text-green-700 dark:text-green-400 flex items-center gap-1">
+                                  <DollarSign className="h-3 w-3" />
+                                  Faturamento Total
+                                </span>
+                              </div>
+                              <p className="text-2xl font-bold text-green-600 dark:text-green-500">
+                                R$ {toNumber(fazenda.faturamento_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </p>
+                              <div className="mt-2 pt-2 border-t border-green-200/50 dark:border-green-800/50 space-y-1">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground">Preço/ton:</span>
+                                  <span className="font-semibold">R$ {toNumber(fazenda.preco_por_tonelada).toLocaleString("pt-BR")}</span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground">Preço/saca:</span>
+                                  <span className="font-semibold">R$ {precoPorSaca.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                Safra {fazenda.safra}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                Último frete: <span className="font-medium">
+                                  {fazenda.ultimo_frete_data
+                                    ? format(new Date(fazenda.ultimo_frete_data), "dd/MM/yyyy", { locale: ptBR })
+                                    : "Nunca"}
+                                </span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <>
+                  {/* Mobile Pagination */}
+                  <div className="mt-6 md:hidden">
+                    <div className="flex items-center justify-between mb-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-sm text-muted-foreground font-medium">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                    <p className="text-xs text-center text-muted-foreground">
+                      {filteredData.length} registros
+                    </p>
+                  </div>
+
+                  {/* Desktop Pagination */}
+                  <div className="mt-6 hidden md:flex justify-center">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setCurrentPage(Math.max(1, currentPage - 1));
+                            }}
+                            className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                          />
+                        </PaginationItem>
+
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                          const isCurrentPage = page === currentPage;
+                          const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
+
+                          if (!isVisible) {
+                            return null;
+                          }
+
+                          if (page === 2 && currentPage > 3) {
+                            return (
+                              <PaginationItem key="ellipsis-start">
+                                <PaginationEllipsis />
+                              </PaginationItem>
+                            );
+                          }
+
+                          if (page === totalPages - 1 && currentPage < totalPages - 2) {
+                            return (
+                              <PaginationItem key="ellipsis-end">
+                                <PaginationEllipsis />
+                              </PaginationItem>
+                            );
+                          }
+
+                          return (
+                            <PaginationItem key={page}>
+                              <PaginationLink
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setCurrentPage(page);
+                                }}
+                                isActive={isCurrentPage}
+                              >
+                                {page}
+                              </PaginationLink>
+                            </PaginationItem>
+                          );
+                        })}
+
+                        <PaginationItem>
+                          <PaginationNext
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setCurrentPage(Math.min(totalPages, currentPage + 1));
+                            }}
+                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                </>
+              )}
             </div>
-          </Card>
-        )}
-      </div>
+          </div>
+
+          {/* Empty State */}
+          {filteredData.length === 0 && (
+            <Card className="p-12">
+              <div className="text-center space-y-4">
+                <div className="h-16 w-16 rounded-full bg-muted mx-auto flex items-center justify-center">
+                  <Package className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg mb-1">Nenhuma fazenda encontrada</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Tente ajustar os filtros ou cadastre uma nova fazenda
+                  </p>
+                </div>
+                <Button onClick={handleOpenNewModal} variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Cadastrar Fazenda
+                </Button>
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* Modal de Nova/Editar Fazenda */}
@@ -1430,7 +1430,7 @@ export default function Fazendas() {
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div className="text-xs text-blue-700 dark:text-blue-300">
-                  <strong>Como funciona:</strong> Defina o preço por tonelada e o peso médio da saca. 
+                  <strong>Como funciona:</strong> Defina o preço por tonelada e o peso médio da saca.
                   O sistema calcula automaticamente o valor por saca e o faturamento conforme os fretes são carregados.
                 </div>
               </div>
@@ -1438,7 +1438,7 @@ export default function Fazendas() {
 
             <div className="p-3 bg-muted/50 rounded-lg">
               <p className="text-xs text-muted-foreground">
-                <strong>Importante:</strong> A produção será incrementada automaticamente conforme os fretes forem cadastrados. 
+                <strong>Importante:</strong> A produção será incrementada automaticamente conforme os fretes forem cadastrados.
                 Não é necessário informar quantidades iniciais.
               </p>
             </div>
@@ -1673,48 +1673,42 @@ export default function Fazendas() {
                       </div>
 
                       {/* Receita Liquida */}
-                      <div className={`group relative overflow-hidden rounded-xl p-6 border hover:shadow-md transition-all duration-300 ${
-                        (toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0 
-                          ? "bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10 border-emerald-200/50 dark:border-emerald-800/30" 
-                          : "bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/20 dark:to-orange-900/10 border-orange-200/50 dark:border-orange-800/30"
-                      }`}>
+                      <div className={`group relative overflow-hidden rounded-xl p-6 border hover:shadow-md transition-all duration-300 ${(toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
+                        ? "bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10 border-emerald-200/50 dark:border-emerald-800/30"
+                        : "bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/20 dark:to-orange-900/10 border-orange-200/50 dark:border-orange-800/30"
+                        }`}>
                         <div className="flex items-start justify-between mb-4">
-                          <div className={`p-2 rounded-lg ${
-                            (toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
-                              ? "bg-emerald-100 dark:bg-emerald-900/30"
-                              : "bg-orange-100 dark:bg-orange-900/30"
-                          }`}>
+                          <div className={`p-2 rounded-lg ${(toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
+                            ? "bg-emerald-100 dark:bg-emerald-900/30"
+                            : "bg-orange-100 dark:bg-orange-900/30"
+                            }`}>
                             {(toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0 ? (
                               <TrendingUp className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
                             ) : (
                               <TrendingDown className="h-6 w-6 text-orange-600 dark:text-orange-400" />
                             )}
                           </div>
-                          <Badge variant="outline" className={`bg-white/60 dark:bg-slate-800/60 ${
-                            (toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
-                              ? "text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
-                              : "text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800"
-                          }`}>
+                          <Badge variant="outline" className={`bg-white/60 dark:bg-slate-800/60 ${(toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
+                            ? "text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+                            : "text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800"
+                            }`}>
                             {(toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0 ? "Lucro" : "Prejuízo"}
                           </Badge>
                         </div>
-                        <p className={`text-sm font-medium mb-2 ${
-                          (toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
-                            ? "text-emerald-700 dark:text-emerald-300"
-                            : "text-orange-700 dark:text-orange-300"
-                        }`}>Receita Líquida</p>
-                        <p className={`text-3xl font-bold tracking-tight whitespace-nowrap ${
-                          (toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
-                            ? "text-emerald-800 dark:text-emerald-200"
-                            : "text-orange-800 dark:text-orange-200"
-                        }`}>
+                        <p className={`text-sm font-medium mb-2 ${(toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : "text-orange-700 dark:text-orange-300"
+                          }`}>Receita Líquida</p>
+                        <p className={`text-3xl font-bold tracking-tight whitespace-nowrap ${(toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
+                          ? "text-emerald-800 dark:text-emerald-200"
+                          : "text-orange-800 dark:text-orange-200"
+                          }`}>
                           R$ {((toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
-                        <p className={`text-xs mt-2 ${
-                          (toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
-                            ? "text-emerald-600/70 dark:text-emerald-400/70"
-                            : "text-orange-600/70 dark:text-orange-400/70"
-                        }`}>resultado final</p>
+                        <p className={`text-xs mt-2 ${(toNumber(selectedProducao.lucro_liquido) || selectedProducao.faturamento_total - toNumber(selectedProducao.total_custos_operacionais)) >= 0
+                          ? "text-emerald-600/70 dark:text-emerald-400/70"
+                          : "text-orange-600/70 dark:text-orange-400/70"
+                          }`}>resultado final</p>
                       </div>
                     </div>
                   </CardContent>
@@ -1749,7 +1743,7 @@ export default function Fazendas() {
                 {selectedProducao.colheita_finalizada ? "Reabrir Colheita" : "Finalizar Colheita"}
               </Button>
             )}
-            <Button 
+            <Button
               onClick={() => {
                 handleOpenEditModal(selectedProducao!);
               }}

@@ -326,7 +326,7 @@ export function PagamentoFormModal({
                                         <Label className="text-xs text-slate-600 dark:text-slate-400">Valor Bruto</Label>
                                         <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900 shadow-sm">
                                             <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
-                                                R$ {fretesNaoPagos
+                                                R$ {(isEditing ? fretesDisponiveis : fretesNaoPagos)
                                                     .filter((f) => selectedFretes.includes(f.id))
                                                     .reduce((acc, f) => acc + f.valorGerado, 0)
                                                     .toLocaleString("pt-BR")}

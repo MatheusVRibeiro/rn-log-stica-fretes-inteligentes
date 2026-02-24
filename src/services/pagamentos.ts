@@ -72,6 +72,23 @@ const atualizarPagamento = async (
     if (isAxiosError(err)) {
       message = err.response?.data?.message ?? err.message ?? message;
       const status = err.response?.status;
+      // Se PUT retornar 404, tentar PATCH (algumas APIs usam PATCH para updates parciais)
+      if (status === 404) {
+        try {
+          const patchRes = await api.patch(`/pagamentos/${id}`, payload);
+          return { success: true, data: patchRes.data.data || patchRes.data, message: patchRes.data.message, status: patchRes.status };
+        } catch (patchErr: unknown) {
+          // log detalhado para debugging
+          console.error("Falha ao atualizar pagamento (PUT retornou 404 e PATCH também falhou)", {
+            id,
+            payload,
+            putError: err?.response?.data ?? err.message,
+            patchError: (patchErr as any)?.response?.data ?? (patchErr as any)?.message ?? patchErr,
+          });
+          const patchStatus = isAxiosError(patchErr) ? (patchErr.response?.status ?? undefined) : undefined;
+          return { success: false, data: null, message: message || "Recurso não encontrado", status: patchStatus ?? status };
+        }
+      }
       return { success: false, data: null, message, status };
     } else if (err instanceof Error) {
       message = err.message;

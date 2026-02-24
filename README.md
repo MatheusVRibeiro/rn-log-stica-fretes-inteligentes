@@ -1,73 +1,73 @@
-# Bem-vindo ao projeto Caramello Logistica
+# Caramello Logística — Sistema de Gestão de Fretes
 
-## Informacoes do projeto
+Aplicação frontend para gestão de fretes, motoristas, caminhões, pagamentos e indicadores operacionais.
 
-**URL**: https://caramello-logistica.com
+Este projeto contém páginas de cadastro, relatórios e geração de guias de pagamento em PDF.
 
-## Como posso editar este codigo?
+URL de demonstração: https://caramello-logistica.com
 
-Existem varias formas de editar sua aplicacao.
+**Principais funcionalidades**
+- Gestão de fretes (criação, listagem, relatórios)
+- Gestão de frota e motoristas
+ - Gestão de custos operacionais e relatórios
+ - Manutenção da frota e controle de manutenções
+- Emissão de guias de pagamento (PDF)
+- Dashboards e KPIs
+- Upload e visualização de comprovantes
 
-**Use o Caramello Logistica**
-
-Basta visitar o site do projeto Caramello Logistica e comecar a fazer solicitacoes.
-
-Alteracoes feitas via Caramello Logistica serao commitadas automaticamente neste repositorio.
-
-**Use seu IDE preferido**
-
-Se voce quiser trabalhar localmente usando seu proprio IDE, pode clonar este repositorio e enviar alteracoes. As alteracoes enviadas tambem serao refletidas no RN Logistica.
-
-O unico requisito e ter Node.js e npm instalados - [instale com nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Siga estes passos:
-
-```sh
-# Passo 1: Clone o repositorio usando a URL Git do projeto.
-git clone <SUA_GIT_URL>
-
-# Passo 2: Acesse o diretorio do projeto.
-cd <NOME_DO_SEU_PROJETO>
-
-# Passo 3: Instale as dependencias necessarias.
-npm i
-
-# Passo 4: Inicie o servidor de desenvolvimento com recarregamento automatico e preview instantaneo.
-npm run dev
-```
-
-**Edite um arquivo diretamente no GitHub**
-
-- Navegue ate o(s) arquivo(s) desejado(s).
-- Clique no botao "Edit" (icone de lapis) no canto superior direito da visualizacao do arquivo.
-- Faca suas alteracoes e realize o commit.
-
-**Use o GitHub Codespaces**
-
-- Va para a pagina principal do seu repositorio.
-- Clique no botao "Code" (botao verde) no canto superior direito.
-- Selecione a aba "Codespaces".
-- Clique em "New codespace" para iniciar um novo ambiente Codespace.
-- Edite os arquivos diretamente no Codespace e realize commit e push quando terminar.
-
-## Quais tecnologias sao usadas neste projeto?
-
-Este projeto foi construido com:
+## Tecnologias
 
 - Vite
 - TypeScript
 - React
-- shadcn-ui
+- shadcn/ui + Radix UI
 - Tailwind CSS
+- jsPDF (geração de PDFs)
 
-## Como posso fazer o deploy deste projeto?
+## Rodando localmente
 
-Basta abrir o Caramello Logistica e clicar em Share -> Publish.
+Pré-requisitos: Node.js e npm (recomendado usar nvm para gerenciar versões)
 
-## Posso conectar um dominio personalizado ao meu projeto Caramello Logistica?
+Clone o repositório, instale dependências e rode em modo de desenvolvimento:
 
-Sim, voce pode!
+```bash
+git clone <SUA_GIT_URL>
+cd rn-log-stica-fretes-inteligentes
+npm install
+npm run dev
+```
 
-Para conectar um dominio, va em Project > Settings > Domains e clique em Connect Domain.
+O servidor de desenvolvimento inicia o app (por padrão em http://localhost:5173 ou porta configurada pelo Vite).
 
-Leia mais aqui: Configuracao de dominio personalizado.
+## Scripts úteis
+
+- `npm run dev` — inicia servidor de desenvolvimento
+- `npm run build` — gera build de produção
+- `npm run preview` — pré-visualiza o build
+- `npm test` — executa testes com Vitest
+
+## Deploy
+
+O projeto é compatível com hospedagem estática (Vercel, Netlify, etc.). Gere o build e faça upload do conteúdo da pasta `dist`:
+
+```bash
+npm run build
+```
+
+## Como contribuir
+
+- Fork e clone o repositório
+- Crie uma branch para sua feature/fix
+- Abra um PR descrevendo as alterações
+
+## Observações técnicas
+
+- O projeto já possui um backend real e o site está em produção (atualizações contínuas). A integração com a API é feita pelos clientes em `src/services` e pela configuração de `src/api/axios.ts`.
+- Para desenvolvimento local, ajuste a variável de ambiente `VITE_API_URL` (ou edite `src/api/axios.ts`) apontando para a URL da API.
+- Convenções: alias `@/` para imports, formulários com React Hook Form + Zod, estilo com Tailwind + `cn()` util.
+
+## Contato
+
+Projeto mantido pela equipe Caramello.
+Para dúvidas ou contribuições, abra uma issue no repositório GitHub.
+

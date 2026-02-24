@@ -68,7 +68,7 @@ import {
 import { format, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, shortName } from "@/lib/utils";
-import { formatarCodigoFrete } from "@/utils/formatters";
+import { formatarCodigoFrete, formatarDocumento } from "@/utils/formatters";
 import { toast } from "sonner";
 import { ITEMS_PER_PAGE } from "@/lib/pagination";
 
@@ -437,7 +437,7 @@ export default function Pagamentos() {
   const fretesData = useMemo(
     () =>
       fretesApi.map((frete, index) => ({
-        id: frete.id,
+        id: String(frete.id),
         codigoFrete: formatarCodigoFrete(frete.codigo_frete || frete.id, frete.data_frete, index + 1),
         codigoFreteRaw: String(frete.codigo_frete || ""),
         motoristaId: getFavorecidoId(frete),
@@ -520,7 +520,7 @@ export default function Pagamentos() {
     const flatFretes = Array.isArray(rawData) ? rawData.flatMap((group: any) => group.fretes ? group.fretes : [group]) : [];
 
     return flatFretes.map((frete: any, index: number) => ({
-      id: frete.id,
+      id: String(frete.id),
       codigoFrete: formatarCodigoFrete(frete.codigo_frete || frete.id, frete.data_frete, index + 1),
       motoristaId: getFavorecidoId(frete),
       motoristaNome: getFavorecidoNome(frete),
@@ -729,7 +729,15 @@ export default function Pagamentos() {
   const handleOpenEditModal = (pagamento: PagamentoMotorista) => {
     resetFormErrors();
     setEditedPagamento(pagamento);
-    setSelectedFretes(pagamento.fretesSelecionados || []);
+    // Normalize frete references (could be codes) to actual frete IDs present in `fretesData`
+    const rawRefs = pagamento.fretesSelecionados || [];
+    const normalized = rawRefs
+      .map((ref) => {
+        const resolved = resolveFreteByRef(ref);
+        return resolved ? String(resolved.id) : String(ref || "");
+      })
+      .filter((v) => v);
+    setSelectedFretes(normalized);
     setSelectedFile(null);
     if (selectedFilePreview) {
       URL.revokeObjectURL(selectedFilePreview);
@@ -936,7 +944,10 @@ export default function Pagamentos() {
       const tipoChave = motorista?.chavePixTipo
         ? String(motorista.chavePixTipo).toUpperCase()
         : "N/I";
-      const chave = motorista?.chavePix || "Chave PIX não cadastrada";
+      const rawChave = motorista?.chavePix || "Chave PIX não cadastrada";
+      const chave = (tipoChave === "CNPJ" || tipoChave === "CPF")
+        ? formatarDocumento(rawChave)
+        : rawChave;
       return {
         metodoLabel: "PIX",
         dadosLabel: `Tipo: ${tipoChave} | Chave: ${chave}`,
@@ -1060,20 +1071,29 @@ export default function Pagamentos() {
     }
 
     // Validate that selected fretes are not already linked to another payment
-    const conflicting = selectedFretes.find((id) => {
-      const f = fretesData.find((ff) => ff.id === id);
-      if (!f) return false;
-      // allow if editing and the frete is linked to the same payment being edited
-      if (f.pagamentoId && isEditing && editedPagamento?.id && String(f.pagamentoId) === String(editedPagamento.id)) return false;
-      return !!f.pagamentoId;
-    });
+    // If we're editing and the selection hasn't changed compared to the original fretes of the payment,
+    // skip the conflict validation (user is only editing metadata/status).
+    const originalSelectedIds = fretesDoPagamento.map((f) => String(f.id));
+    const selectionsEqual =
+      originalSelectedIds.length === selectedFretes.length &&
+      originalSelectedIds.every((id) => selectedFretes.includes(id));
 
-    if (conflicting) {
-      toast.error("Um ou mais fretes selecionados já estão vinculados a outro pagamento.");
-      // refresh pendentes to sync UI
-      if (usePendentesEndpoint && motoristaIdForPendentes) queryClient.invalidateQueries({ queryKey: ["fretes", "pendentes", motoristaIdForPendentes] });
-      setIsSaving(false);
-      return;
+    if (!isEditing || !selectionsEqual) {
+      const conflicting = selectedFretes.find((id) => {
+        const f = fretesData.find((ff) => ff.id === id);
+        if (!f) return false;
+        // allow if editing and the frete is linked to the same payment being edited
+        if (f.pagamentoId && isEditing && editedPagamento?.id && String(f.pagamentoId) === String(editedPagamento.id)) return false;
+        return !!f.pagamentoId;
+      });
+
+      if (conflicting) {
+        toast.error("Um ou mais fretes selecionados já estão vinculados a outro pagamento.");
+        // refresh pendentes to sync UI
+        if (usePendentesEndpoint && motoristaIdForPendentes) queryClient.invalidateQueries({ queryKey: ["fretes", "pendentes", motoristaIdForPendentes] });
+        setIsSaving(false);
+        return;
+      }
     }
 
     const nomeFavorecidoResolvido = (
