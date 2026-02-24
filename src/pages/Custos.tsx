@@ -572,6 +572,35 @@ export default function Custos() {
   const pedagioItems = filteredData.filter((c) => getTipoKey(c.tipo) === "pedagio");
   const outrosItems = filteredData.filter((c) => getTipoKey(c.tipo) === "outros");
 
+  // Ordenar por código do frete (mais recente primeiro). Tenta extrair ano+sequência
+  // Ex: FRETE-2026-086 ou FRT-2026-086
+  const extractYearSeq = (s?: unknown) => {
+    if (!s) return null;
+    const raw = String(s).trim();
+    const m = raw.match(/(\d{4})[^\d]*(\d{1,})$/);
+    if (!m) return null;
+    return { year: Number(m[1]), seq: Number(m[2]) };
+  };
+
+  const compareByFreteCodeDesc = (a: Custo, b: Custo) => {
+    const aKey = extractYearSeq(a.codigo_frete);
+    const bKey = extractYearSeq(b.codigo_frete);
+    if (aKey && bKey) {
+      if (bKey.year !== aKey.year) return bKey.year - aKey.year;
+      if (bKey.seq !== aKey.seq) return bKey.seq - aKey.seq;
+      return 0;
+    }
+    if (aKey && !bKey) return -1; // a has code -> first
+    if (!aKey && bKey) return 1;  // b has code -> first
+    // both without codigo_frete -> keep by frete_id desc
+    return String(b.frete_id || "").localeCompare(String(a.frete_id || ""));
+  };
+
+  combustivelItems.sort(compareByFreteCodeDesc);
+  manutencaoItems.sort(compareByFreteCodeDesc);
+  pedagioItems.sort(compareByFreteCodeDesc);
+  outrosItems.sort(compareByFreteCodeDesc);
+
   // Lógica de paginação
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
