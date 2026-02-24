@@ -403,7 +403,24 @@ export const isCustoFromFrete = (
   const idNorm = normalizeFreteRef(idRaw);
   const codigoNorm = normalizeFreteRef(codigoRaw);
 
-  return custoNorm === idNorm || (Boolean(codigoNorm) && custoNorm === codigoNorm);
+  if (custoNorm === idNorm || (Boolean(codigoNorm) && custoNorm === codigoNorm)) return true;
+
+  // Tentativa extra: comparar anos + sequência quando formatos diferem (ex: FRT-2026-081 vs FRETE-2026-081)
+  const extractYearSeq = (s: string) => {
+    const m = s.match(/(\d{4})[^\d]*(\d{1,})$/);
+    if (!m) return null;
+    return { year: m[1], seq: m[2].padStart(3, "0") };
+  };
+
+  try {
+    const c = extractYearSeq(custoRaw);
+    const a = extractYearSeq(idRaw) || extractYearSeq(codigoRaw);
+    if (c && a && c.year === a.year && c.seq === a.seq) return true;
+  } catch (e) {
+    // ignore
+  }
+
+  return false;
 };
 
 export const formatDateBRDisplay = (value: string) => {

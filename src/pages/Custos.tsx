@@ -66,7 +66,7 @@ import { ITEMS_PER_PAGE } from "@/lib/pagination";
 import { RefreshingIndicator } from "@/components/shared/RefreshingIndicator";
 import { useRefreshData } from "@/hooks/useRefreshData";
 import { useShake } from "@/hooks/useShake";
-import { formatarCodigoFrete } from "@/utils/formatters";
+import { formatarCodigoFrete, isCustoFromFrete } from "@/utils/formatters";
 
 export const tipoConfig = {
   combustivel: { label: "Combustível", icon: Fuel, color: "text-warning" },
@@ -135,7 +135,10 @@ export default function Custos() {
   // Query para listar fretes (vinculo de custos)
   const { data: fretesResponse } = useQuery<ApiResponse<Frete[]>>({
     queryKey: ["fretes"],
-    queryFn: () => fretesService.listarFretes(),
+    // Solicita um limite maior para garantir que a lista local de fretes
+    // contenha a maioria dos registros e permita resolver o motorista/frete
+    // associados aos lançamentos de custos.
+    queryFn: () => fretesService.listarFretes({ page: 1, limit: 1000 }),
   });
 
   // Query para listar fretes PENDENTES (sem pagamento)
@@ -606,7 +609,7 @@ export default function Custos() {
       key: "frete_id",
       header: "Frete",
       render: (item: Custo) => {
-        const related = fretes.find(f => String(f.id) === String(item.frete_id));
+        const related = fretes.find((f) => isCustoFromFrete((item as any).frete_id, f.id, f.codigo_frete));
         const codigoFrete = item.codigo_frete || related?.codigo_frete || getFreteCodeFallback(item.frete_id);
         const motorista = item.motorista || related?.motorista_nome || "—";
 
@@ -686,12 +689,7 @@ export default function Custos() {
   }
 
   const selectedFrete = selectedCusto
-    ? fretes.find((frete) => {
-      const custoRef = normalizeFreteRef(selectedCusto.frete_id);
-      const freteId = normalizeFreteRef(frete.id);
-      const freteCodigo = normalizeFreteRef(frete.codigo_frete);
-      return custoRef === freteId || (Boolean(freteCodigo) && custoRef === freteCodigo);
-    })
+    ? fretes.find((frete) => isCustoFromFrete(selectedCusto.frete_id, frete.id, frete.codigo_frete))
     : null;
 
   const selectedFreteCodigo = selectedCusto
