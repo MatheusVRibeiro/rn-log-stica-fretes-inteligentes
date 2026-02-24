@@ -255,17 +255,17 @@ export default function Dashboard() {
 
     fazendaParaCalcular.forEach((fazenda: Record<string, any>) => {
       // Usar o campo correto: total_sacas_carregadas
-      const sacas = Number(fazenda.total_sacas_carregadas || 0);
-      
-      // Tentar diferentes nomes para toneladas
-      const toneladas = Number((fazenda.total_toneladas) || 
-                       ((sacas * 25) / 1000) || 0);
-      
+      const sacas = Number(fazenda.total_sacas_carregadas || fazenda.total_sacas || fazenda.sacas || 0);
+
+      // Preferir total_toneladas quando disponível, senão usar peso_medio_saca (se informado), senão fallback 25kg
+      const pesoMedio = Number(fazenda.peso_medio_saca || fazenda.peso_medio || 25);
+      const toneladas = Number(fazenda.total_toneladas ?? ((sacas * pesoMedio) / 1000));
+
       // Tentar diferentes nomes para valor/faturamento
-      const valor = Number((fazenda.faturamento_total) || 
-                   (fazenda.valor_total) || 
-                   (fazenda.valor_estoque) || 0);
-      
+      const valor = Number(
+        fazenda.faturamento_total ?? fazenda.faturamento ?? fazenda.valor_total ?? fazenda.valor_estoque ?? fazenda.valor ?? 0
+      );
+
       totalEstoquesSacas += sacas;
       totalEstoquesToneladas += toneladas;
       totalEstoquesValor += valor;
@@ -480,7 +480,7 @@ export default function Dashboard() {
                 <Weight className="w-5 h-5 text-purple-600" />
               </div>
               <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">
-                {(Number(kpisIntegrados.estoques.totalToneladas || 0)).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} ton
+                {(Number(kpisIntegrados.estoques.totalToneladas || 0)).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} ton
               </p>
               <p className="text-sm font-medium text-muted-foreground">
                 Peso médio por saca: 25kg
@@ -591,12 +591,12 @@ export default function Dashboard() {
             value: 0,
             isPositive: true,
           }}
-          tooltip={`Total de sacas em estoque nas fazendas. Equivale a ~${(Number(kpisIntegrados.estoques.totalToneladas || 0)).toFixed(1)}t`}
+          tooltip={`Total de sacas em estoque nas fazendas. Equivale a ~${Number(kpisIntegrados.estoques.totalToneladas || 0).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}t`}
           onClick={() => {}}
         />
         <KPICard
           title="Peso Total"
-          value={`${(Number(kpisIntegrados.estoques.totalToneladas || 0)).toFixed(1)}t`}
+          value={`${Number(kpisIntegrados.estoques.totalToneladas || 0).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}t`}
           icon={Weight}
           variant="active"
           trend={{
