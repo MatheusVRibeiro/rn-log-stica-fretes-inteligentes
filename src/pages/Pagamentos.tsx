@@ -83,6 +83,7 @@ import custosService from "@/services/custos";
 import fazendasService from "@/services/fazendas";
 import { exportarGuiaPagamentoIndividual, PagamentoPDFParams } from "@/utils/pdf/pagamentos-pdf";
 import { usePeriodoFilter } from "@/hooks/usePeriodoFilter";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 // locale imported above
 /*
  * 5. Ao salvar pagamento, os fretes selecionados são vinculados (recebem pagamentoId)
@@ -697,6 +698,41 @@ export default function Pagamentos() {
       }
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: pagamentosService.deletarPagamento,
+    onSuccess: async (response) => {
+      if (response.success) {
+        queryClient.invalidateQueries({ queryKey: ["pagamentos"] });
+        if (usePendentesEndpoint && motoristaIdForPendentes) {
+          queryClient.invalidateQueries({ queryKey: ["fretes", "pendentes", motoristaIdForPendentes] });
+        }
+        queryClient.invalidateQueries({ queryKey: ["fretes"] });
+
+        toast.success("Pagamento excluído com sucesso!");
+        setSelectedPagamento(null);
+      } else {
+        toast.error(response.message || "Erro ao excluir pagamento");
+      }
+    },
+    onError: (error: any) => {
+      const isNetwork = !error?.response;
+      const msg = isNetwork ? "Erro de rede, tente novamente" : (error?.response?.data?.message || error?.message || "Erro ao excluir pagamento");
+      toast.error(msg);
+    },
+  });
+
+  const [confirmDeletePagamento, setConfirmDeletePagamento] = useState<PagamentoMotorista | null>(null);
+
+  const handleDeletePagamento = (pagamento: PagamentoMotorista) => {
+    setConfirmDeletePagamento(pagamento);
+  };
+
+  const handleConfirmDeletePagamento = () => {
+    if (!confirmDeletePagamento) return;
+    deleteMutation.mutate(String(confirmDeletePagamento.id));
+    setConfirmDeletePagamento(null);
+  };
 
   const handleOpenNewModal = () => {
     resetFormErrors();
@@ -1379,6 +1415,7 @@ export default function Pagamentos() {
         getComprovanteUrl={getComprovanteUrl}
         parseFileType={parseFileType}
         setComprovanteDialog={setComprovanteDialog}
+        handleDeletePagamento={handleDeletePagamento}
       />
 
       <ComprovanteDialog
@@ -1419,6 +1456,15 @@ export default function Pagamentos() {
         setAutoEmitirGuia={setAutoEmitirGuia}
         handleSave={handleSave}
         handleMotoristaChange={handleMotoristaChange}
+      />
+      <ConfirmDialog
+        open={!!confirmDeletePagamento}
+        onOpenChange={(open) => { if (!open) setConfirmDeletePagamento(null); }}
+        title="Excluir Guia de Pagamento"
+        description="Tem certeza que deseja excluir esta guia de pagamento? Os fretes vinculados voltarão a ficar pendentes e poderão ser incluídos em uma nova guia."
+        confirmLabel="Sim, excluir"
+        variant="danger"
+        onConfirm={handleConfirmDeletePagamento}
       />
     </MainLayout>
   );

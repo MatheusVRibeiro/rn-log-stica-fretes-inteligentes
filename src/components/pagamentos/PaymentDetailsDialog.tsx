@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { FileDown, Edit, Calendar, DollarSign, Paperclip, Eye } from "lucide-react";
+import { FileDown, Edit, Calendar, DollarSign, Paperclip, Eye, Trash2 } from "lucide-react";
 import { PagamentoMotorista, Frete, Custo } from "@/types";
 import { toast } from "sonner";
 
@@ -40,6 +40,7 @@ interface PaymentDetailsDialogProps {
     getComprovanteUrl: (url: string | undefined) => string | null;
     parseFileType: (fileName: string) => { isImage: boolean; isPdf: boolean };
     setComprovanteDialog: (val: any) => void;
+    handleDeletePagamento: (pagamento: PagamentoMotorista) => void;
 }
 
 export function PaymentDetailsDialog({
@@ -54,6 +55,7 @@ export function PaymentDetailsDialog({
     getComprovanteUrl,
     parseFileType,
     setComprovanteDialog,
+    handleDeletePagamento,
 }: PaymentDetailsDialogProps) {
     if (!selectedPagamento) return null;
 
@@ -63,49 +65,59 @@ export function PaymentDetailsDialog({
         }}>
             <DialogContent className="max-w-3xl">
                 <DialogHeader>
-                    <div className="flex items-center justify-between">
-                        <DialogTitle>Detalhes do Pagamento</DialogTitle>
-                        <DialogDescription className="sr-only">
-                            Detalhes do pagamento e ações disponíveis.
-                        </DialogDescription>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                    handleExportarPDF({
-                                        pagamentoId: selectedPagamento.id,
-                                        motoristaId: selectedPagamento.motoristaId,
-                                        motoristaNome: selectedPagamento.motoristaNome,
-                                        metodoPagamento: selectedPagamento.metodoPagamento,
-                                        dataPagamento: selectedPagamento.dataPagamento,
-                                        freteIds: selectedPagamento.fretesSelecionados || [],
-                                        totalToneladas: Number(selectedPagamento.toneladas || 0),
-                                        valorTonelada: Number(selectedPagamento.valorUnitarioPorTonelada || 0),
-                                        valorTotal: Number(selectedPagamento.valorTotal || 0),
-                                        tipoRelatorio: selectedPagamento.tipoRelatorio,
-                                    });
-                                }}
-                                className="gap-2"
-                            >
-                                <FileDown className="h-4 w-4" />
-                                Reimprimir PDF
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                    handleOpenEditModal(selectedPagamento);
-                                    setSelectedPagamento(null);
-                                }}
-                                className="gap-2"
-                            >
-                                <Edit className="h-4 w-4" />
-                                Editar
-                            </Button>
-                        </div>
-                    </div>
+                    <DialogTitle>Detalhes do Pagamento</DialogTitle>
+                    <DialogDescription className="sr-only">
+                        Detalhes do pagamento e ações disponíveis.
+                    </DialogDescription>
                 </DialogHeader>
+
+                {/* Barra de ações — separada do X de fechar */}
+                <div className="flex items-center justify-center gap-2 pb-2 border-b">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            handleExportarPDF({
+                                pagamentoId: selectedPagamento.id,
+                                motoristaId: selectedPagamento.motoristaId,
+                                motoristaNome: selectedPagamento.motoristaNome,
+                                metodoPagamento: selectedPagamento.metodoPagamento,
+                                dataPagamento: selectedPagamento.dataPagamento,
+                                freteIds: selectedPagamento.fretesSelecionados || [],
+                                totalToneladas: Number(selectedPagamento.toneladas || 0),
+                                valorTonelada: Number(selectedPagamento.valorUnitarioPorTonelada || 0),
+                                valorTotal: Number(selectedPagamento.valorTotal || 0),
+                                tipoRelatorio: selectedPagamento.tipoRelatorio,
+                            });
+                        }}
+                        className="gap-2"
+                    >
+                        <FileDown className="h-4 w-4" />
+                        Reimprimir PDF
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            handleOpenEditModal(selectedPagamento);
+                            setSelectedPagamento(null);
+                        }}
+                        className="gap-2"
+                    >
+                        <Edit className="h-4 w-4" />
+                        Editar
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeletePagamento(selectedPagamento)}
+                        className="gap-2"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                        Excluir
+                    </Button>
+                </div>
+
                 <div className="max-h-[calc(90vh-200px)] overflow-y-auto px-1">
                     <div className="space-y-6">
                         {/* Header */}
@@ -153,7 +165,7 @@ export function PaymentDetailsDialog({
                             <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
                                 <p className="text-sm text-muted-foreground mb-1">Toneladas</p>
                                 <p className="text-3xl font-bold text-blue-600">
-                                    {selectedPagamento.toneladas}t
+                                    {Number(selectedPagamento.toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}t
                                 </p>
                             </Card>
                             <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900">
@@ -188,7 +200,7 @@ export function PaymentDetailsDialog({
                                                                 {frete.codigoFrete || frete.id} • {frete.rota}
                                                             </p>
                                                             <p className="text-xs text-muted-foreground">
-                                                                {frete.dataFrete} • {frete.toneladas}t
+                                                                {frete.dataFrete} • {Number(frete.toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}t
                                                             </p>
                                                         </div>
                                                         <Badge variant="outline" className="bg-blue-50 text-blue-700">

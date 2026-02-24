@@ -527,7 +527,7 @@ export function FreteFormModal({
                                             <div>
                                                 <p className="text-xs text-muted-foreground">Toneladas</p>
                                                 <p className="font-bold text-foreground">
-                                                    {toNumber(newFrete.toneladas).toFixed(2)} t
+                                                    {toNumber(newFrete.toneladas).toFixed(3)} t
                                                 </p>
                                             </div>
                                             <div>

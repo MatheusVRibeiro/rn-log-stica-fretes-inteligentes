@@ -204,7 +204,7 @@ export function PagamentoFormModal({
                                                             </Badge>
                                                         </div>
                                                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                                                            📅 {frete.dataFrete} • 📦 {frete.toneladas} toneladas
+                                                            📅 {frete.dataFrete} • 📦 {Number(frete.toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} toneladas
                                                         </p>
                                                     </div>
                                                 </div>
@@ -241,7 +241,7 @@ export function PagamentoFormModal({
                                 <div>
                                     <p className="text-sm text-muted-foreground mb-1">Toneladas</p>
                                     <p className="text-2xl font-bold text-blue-600">
-                                        {editedPagamento.toneladas}t
+                                        {Number(editedPagamento.toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}t
                                     </p>
                                 </div>
                                 <div>
@@ -371,7 +371,7 @@ export function PagamentoFormModal({
                                             R$ {(editedPagamento.valorUnitarioPorTonelada || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </p>
                                         <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-2">
-                                            📊 {editedPagamento.toneladas.toFixed(2)}t • Já com descontos incluídos
+                                            📊 {editedPagamento.toneladas.toFixed(3)}t • Já com descontos incluídos
                                         </p>
                                     </div>
                                     <DollarSign className="h-12 w-12 text-slate-400 opacity-50" />

@@ -517,7 +517,7 @@ export default function Fazendas() {
     card(
       76,
       "Toneladas",
-      (fazenda.total_toneladas ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 }),
+      (fazenda.total_toneladas ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
       [30, 64, 175],
       [224, 231, 255]
     );
@@ -676,7 +676,7 @@ export default function Fazendas() {
                     <p className="text-2xl md:text-3xl font-bold tracking-tight">
                       {fazendas
                         .reduce((acc, p) => acc + toNumber(p.total_toneladas), 0)
-                        .toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                        .toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </p>
                     <p className="text-[11px] md:text-xs text-purple-600 flex items-center gap-1">
                       <Weight className="h-3 w-3" />
@@ -870,7 +870,7 @@ export default function Fazendas() {
                               Toneladas
                             </p>
                             <p className="text-2xl font-bold text-purple-600">
-                              {toNumber(fazenda.total_toneladas).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                              {toNumber(fazenda.total_toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                             </p>
                           </div>
                         </div>
@@ -1005,7 +1005,7 @@ export default function Fazendas() {
                                   Toneladas
                                 </p>
                                 <p className="text-2xl font-bold text-purple-600">
-                                  {toNumber(fazenda.total_toneladas).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                                  {toNumber(fazenda.total_toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                                 </p>
                               </div>
                             </div>
@@ -1412,7 +1412,7 @@ export default function Fazendas() {
                     </div>
                     <div>
                       <p className="text-blue-600 dark:text-blue-400">Toneladas</p>
-                      <p className="font-bold text-lg">{newProducao.total_toneladas?.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) || 0}</p>
+                      <p className="font-bold text-lg">{newProducao.total_toneladas?.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) || 0}</p>
                     </div>
                     <div>
                       <p className="text-blue-600 dark:text-blue-400">Faturamento</p>
@@ -1524,7 +1524,7 @@ export default function Fazendas() {
                         <p className="text-sm font-medium">Total em Toneladas</p>
                       </div>
                       <p className="text-3xl font-bold text-purple-700 dark:text-purple-400 whitespace-nowrap">
-                        {selectedProducao.total_toneladas.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                        {selectedProducao.total_toneladas.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                       </p>
                       <p className="text-xs text-muted-foreground">peso transportado</p>
                     </div>

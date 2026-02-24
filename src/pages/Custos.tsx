@@ -67,6 +67,7 @@ import { RefreshingIndicator } from "@/components/shared/RefreshingIndicator";
 import { useRefreshData } from "@/hooks/useRefreshData";
 import { useShake } from "@/hooks/useShake";
 import { formatarCodigoFrete, isCustoFromFrete } from "@/utils/formatters";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 
 export const tipoConfig = {
   combustivel: { label: "Combustível", icon: Fuel, color: "text-warning" },
@@ -129,7 +130,7 @@ export default function Custos() {
   // Query para listar custos
   const { data: custosResponse, isLoading } = useQuery<ApiResponse<Custo[]>>({
     queryKey: ["custos"],
-    queryFn: () => custosService.listarCustos(),
+    queryFn: () => custosService.fetchAllCustos(),
   });
 
   // Query para listar fretes (vinculo de custos)
@@ -269,13 +270,14 @@ export default function Custos() {
   const [editingCusto, setEditingCusto] = useState<Custo | null>(null);
   const [selectedCusto, setSelectedCusto] = useState<Custo | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [confirmDeleteCusto, setConfirmDeleteCusto] = useState<Custo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = ITEMS_PER_PAGE;
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [showAllCombustivel, setShowAllCombustivel] = useState(false);
-  const [showAllManutencao, setShowAllManutencao] = useState(false);
-  const [showAllPedagio, setShowAllPedagio] = useState(false);
-  const [showAllOutros, setShowAllOutros] = useState(false);
+  const [pageCombustivel, setPageCombustivel] = useState(1);
+  const [pageManutencao, setPageManutencao] = useState(1);
+  const [pagePedagio, setPagePedagio] = useState(1);
+  const [pageOutros, setPageOutros] = useState(1);
 
   // Estados do formulário
   const [formData, setFormData] = useState<Partial<CriarCustoPayload>>({
@@ -425,10 +427,14 @@ export default function Custos() {
   };
 
   const handleDelete = (custo: Custo) => {
-    if (window.confirm("Tem certeza que deseja deletar este custo?")) {
-      startRefresh();
-      deleteMutation.mutate(custo.id);
-    }
+    setConfirmDeleteCusto(custo);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!confirmDeleteCusto) return;
+    startRefresh();
+    deleteMutation.mutate(confirmDeleteCusto.id);
+    setConfirmDeleteCusto(null);
   };
 
   const parseCustoDate = (value: string) => {
@@ -528,22 +534,35 @@ export default function Custos() {
     dateFrom !== undefined ||
     dateTo !== undefined;
 
-  // Lista única de motoristas
-  const motoristas = Array.from(new Set(custos.map(c => c.motorista)));
+  // Lista única de motoristas usando dados do custo e do frete associado
+  const motoristas = Array.from(
+    new Set(
+      custosFiltrados.map(c => {
+        const related = fretes.find(f => isCustoFromFrete((c as any).frete_id, f.id, c.codigo_frete));
+        const motoristaResultante = c.motorista || related?.motorista_nome || related?.proprietario_nome || "—";
+        return motoristaResultante;
+      }).filter(n => n && n !== "—")
+    )
+  ).sort();
 
   const filteredData = custosFiltrados.filter((custo) => {
+    const related = fretes.find(f => isCustoFromFrete((custo as any).frete_id, f.id, custo.codigo_frete));
+    const motoristaResultante = custo.motorista || related?.motorista_nome || related?.proprietario_nome || "—";
+    const codigoFrete = custo.codigo_frete || related?.codigo_frete || getFreteCodeFallback(custo.frete_id);
+
     // Filtro de busca
     const q = search.toLowerCase();
     const matchesSearch =
       String(custo.frete_id || "").toLowerCase().includes(q) ||
+      String(codigoFrete || "").toLowerCase().includes(q) ||
       String(custo.descricao || "").toLowerCase().includes(q) ||
-      String(custo.motorista || "").toLowerCase().includes(q);
+      String(motoristaResultante).toLowerCase().includes(q);
 
     // Filtro de tipo
     const matchesTipo = tipoFilter === "all" || custo.tipo === tipoFilter;
 
     // Filtro de motorista
-    const matchesMotorista = motoristaFilter === "all" || custo.motorista === motoristaFilter;
+    const matchesMotorista = motoristaFilter === "all" || motoristaResultante === motoristaFilter;
 
     // Filtro de comprovante
     const matchesComprovante =
@@ -602,13 +621,26 @@ export default function Custos() {
   outrosItems.sort(compareByFreteCodeDesc);
 
   // Lógica de paginação
+  // Lógica de paginação
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
+
+  const paginatedCombustivel = combustivelItems.slice((pageCombustivel - 1) * itemsPerPage, pageCombustivel * itemsPerPage);
+  const paginatedManutencao = manutencaoItems.slice((pageManutencao - 1) * itemsPerPage, pageManutencao * itemsPerPage);
+  const paginatedPedagio = pedagioItems.slice((pagePedagio - 1) * itemsPerPage, pagePedagio * itemsPerPage);
+  const paginatedOutros = outrosItems.slice((pageOutros - 1) * itemsPerPage, pageOutros * itemsPerPage);
+
+  const totalPagesCombustivel = Math.ceil(combustivelItems.length / itemsPerPage);
+  const totalPagesManutencao = Math.ceil(manutencaoItems.length / itemsPerPage);
+  const totalPagesPedagio = Math.ceil(pedagioItems.length / itemsPerPage);
+  const totalPagesOutros = Math.ceil(outrosItems.length / itemsPerPage);
 
   // Resetar para página 1 quando aplicar novos filtros
   useEffect(() => {
     setCurrentPage(1);
+    setPageCombustivel(1);
+    setPageManutencao(1);
+    setPagePedagio(1);
+    setPageOutros(1);
   }, [search, tipoFilter, motoristaFilter, comprovanteFilter, dateFrom, dateTo]);
 
   const totalCustos = custosFiltrados.reduce((acc, c) => acc + toNumber(c.valor), 0);
@@ -720,6 +752,58 @@ export default function Custos() {
   const selectedFrete = selectedCusto
     ? fretes.find((frete) => isCustoFromFrete(selectedCusto.frete_id, frete.id, frete.codigo_frete))
     : null;
+
+  const renderPaginationWidget = (
+    currentPageValue: number,
+    totalPagesValue: number,
+    setPageFunc: React.Dispatch<React.SetStateAction<number>>,
+    totalItems: number
+  ) => {
+    if (totalPagesValue <= 1) return null;
+    return (
+      <div className="p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p className="text-sm text-muted-foreground w-full text-center sm:text-left">
+          Mostrando {((currentPageValue - 1) * itemsPerPage) + 1} a {Math.min(currentPageValue * itemsPerPage, totalItems)} de {totalItems} registros
+        </p>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            className="h-8 w-8 p-0"
+            onClick={() => setPageFunc(Math.max(1, currentPageValue - 1))}
+            disabled={currentPageValue === 1}
+          >
+            <span className="sr-only">Anterior</span>
+            <PaginationPrevious className="h-4 w-4" />
+          </Button>
+          <div className="text-sm font-medium px-2 block sm:hidden">
+            {currentPageValue} / {totalPagesValue}
+          </div>
+          <div className="hidden sm:flex items-center space-x-2">
+            {Array.from({ length: totalPagesValue }, (_, i) => i + 1).map((page) => {
+              const isVisible = Math.abs(page - currentPageValue) <= 1 || page === 1 || page === totalPagesValue;
+              if (!isVisible) return null;
+              if (page === 2 && currentPageValue > 3) return <PaginationEllipsis key="ellipsis-start" />;
+              if (page === totalPagesValue - 1 && currentPageValue < totalPagesValue - 2) return <PaginationEllipsis key="ellipsis-end" />;
+              return (
+                <PaginationLink isActive={page === currentPageValue} onClick={() => setPageFunc(page)} key={page} className="cursor-pointer">
+                  {page}
+                </PaginationLink>
+              );
+            })}
+          </div>
+          <Button
+            variant="outline"
+            className="h-8 w-8 p-0"
+            onClick={() => setPageFunc(Math.min(totalPagesValue, currentPageValue + 1))}
+            disabled={currentPageValue === totalPagesValue}
+          >
+            <span className="sr-only">Próxima</span>
+            <PaginationNext className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   const selectedFreteCodigo = selectedCusto
     ? formatarCodigoFrete(
@@ -1073,121 +1157,11 @@ export default function Custos() {
             </div>
             <DataTable<Custo>
               columns={columns}
-              data={(showAllCombustivel ? combustivelItems : combustivelItems.slice(0, 7))}
+              data={paginatedCombustivel}
               onRowClick={handleRowClick}
               emptyMessage="Nenhum custo de combustível"
             />
-
-            {/* Show all toggle */}
-            {combustivelItems.length > 7 && (
-              <div className="p-3 border-t flex justify-end">
-                <Button variant="ghost" size="sm" onClick={() => setShowAllCombustivel((s) => !s)}>
-                  {showAllCombustivel ? `Ver menos` : `Ver todos (${combustivelItems.length})`}
-                </Button>
-              </div>
-            )}
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <>
-                {/* Mobile Pagination */}
-                <div className="mt-6 md:hidden">
-                  <div className="flex items-center justify-between mb-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      Anterior
-                    </Button>
-                    <span className="text-sm text-muted-foreground font-medium">
-                      {currentPage} / {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                      disabled={currentPage === totalPages}
-                    >
-                      Próxima
-                    </Button>
-                  </div>
-                  <p className="text-xs text-center text-muted-foreground">
-                    {filteredData.length} registros
-                  </p>
-                </div>
-
-                {/* Desktop Pagination */}
-                <div className="mt-6 hidden md:flex justify-center">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setCurrentPage(Math.max(1, currentPage - 1));
-                          }}
-                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                        const isCurrentPage = page === currentPage;
-                        const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
-
-                        if (!isVisible) {
-                          return null;
-                        }
-
-                        if (page === 2 && currentPage > 3) {
-                          return (
-                            <PaginationItem key="ellipsis-start">
-                              <PaginationEllipsis />
-                            </PaginationItem>
-                          );
-                        }
-
-                        if (page === totalPages - 1 && currentPage < totalPages - 2) {
-                          return (
-                            <PaginationItem key="ellipsis-end">
-                              <PaginationEllipsis />
-                            </PaginationItem>
-                          );
-                        }
-
-                        return (
-                          <PaginationItem key={page}>
-                            <PaginationLink
-                              href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                setCurrentPage(page);
-                              }}
-                              isActive={isCurrentPage}
-                            >
-                              {page}
-                            </PaginationLink>
-                          </PaginationItem>
-                        );
-                      })}
-
-                      <PaginationItem>
-                        <PaginationNext
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setCurrentPage(Math.min(totalPages, currentPage + 1));
-                          }}
-                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              </>
-            )}
+            {renderPaginationWidget(pageCombustivel, totalPagesCombustivel, setPageCombustivel, combustivelItems.length)}
           </Card>
         )}
 
@@ -1210,24 +1184,18 @@ export default function Custos() {
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">Total</p>
                   <p className="text-lg font-bold text-red-600">
-                    R$ {manutencaoItems.reduce((acc, c) => acc + toNumber(c.valor), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    R$ {totalManutencao.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                   </p>
                 </div>
               </div>
             </div>
             <DataTable<Custo>
               columns={columns}
-              data={(showAllManutencao ? manutencaoItems : manutencaoItems.slice(0, 7))}
+              data={paginatedManutencao}
               onRowClick={handleRowClick}
               emptyMessage="Nenhum custo de manutenção"
             />
-            {manutencaoItems.length > 7 && (
-              <div className="p-3 border-t flex justify-end">
-                <Button variant="ghost" size="sm" onClick={() => setShowAllManutencao((s) => !s)}>
-                  {showAllManutencao ? `Ver menos` : `Ver todos (${manutencaoItems.length})`}
-                </Button>
-              </div>
-            )}
+            {renderPaginationWidget(pageManutencao, totalPagesManutencao, setPageManutencao, manutencaoItems.length)}
           </Card>
         )}
 
@@ -1250,24 +1218,18 @@ export default function Custos() {
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">Total</p>
                   <p className="text-lg font-bold text-sky-600">
-                    R$ {pedagioItems.reduce((acc, c) => acc + toNumber(c.valor), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    R$ {totalPedagio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                   </p>
                 </div>
               </div>
             </div>
             <DataTable<Custo>
               columns={columns}
-              data={(showAllPedagio ? pedagioItems : pedagioItems.slice(0, 7))}
+              data={paginatedPedagio}
               onRowClick={handleRowClick}
               emptyMessage="Nenhum pedágio"
             />
-            {pedagioItems.length > 7 && (
-              <div className="p-3 border-t flex justify-end">
-                <Button variant="ghost" size="sm" onClick={() => setShowAllPedagio((s) => !s)}>
-                  {showAllPedagio ? `Ver menos` : `Ver todos (${pedagioItems.length})`}
-                </Button>
-              </div>
-            )}
+            {renderPaginationWidget(pagePedagio, totalPagesPedagio, setPagePedagio, pedagioItems.length)}
           </Card>
         )}
 
@@ -1297,17 +1259,11 @@ export default function Custos() {
             </div>
             <DataTable<Custo>
               columns={columns}
-              data={(showAllOutros ? outrosItems : outrosItems.slice(0, 7))}
+              data={paginatedOutros}
               onRowClick={handleRowClick}
               emptyMessage="Nenhum outro custo"
             />
-            {outrosItems.length > 7 && (
-              <div className="p-3 border-t flex justify-end">
-                <Button variant="ghost" size="sm" onClick={() => setShowAllOutros((s) => !s)}>
-                  {showAllOutros ? `Ver menos` : `Ver todos (${outrosItems.length})`}
-                </Button>
-              </div>
-            )}
+            {renderPaginationWidget(pageOutros, totalPagesOutros, setPageOutros, outrosItems.length)}
           </Card>
         )}
 
@@ -1324,80 +1280,6 @@ export default function Custos() {
               </p>
             </div>
           </Card>
-        )}
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="mt-6 flex justify-center">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setCurrentPage(Math.max(1, currentPage - 1));
-                    }}
-                    className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                  />
-                </PaginationItem>
-
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                  const isCurrentPage = page === currentPage;
-                  const isVisible = Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages;
-
-                  if (!isVisible) {
-                    return null;
-                  }
-
-                  if (page === 2 && currentPage > 3) {
-                    return (
-                      <PaginationItem key="ellipsis-start">
-                        <PaginationEllipsis />
-                      </PaginationItem>
-                    );
-                  }
-
-                  if (page === totalPages - 1 && currentPage < totalPages - 2) {
-                    return (
-                      <PaginationItem key="ellipsis-end">
-                        <PaginationEllipsis />
-                      </PaginationItem>
-                    );
-                  }
-
-                  return (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        href="#"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setCurrentPage(page);
-                        }}
-                        isActive={isCurrentPage}
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  );
-                })}
-
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setCurrentPage(Math.min(totalPages, currentPage + 1));
-                    }}
-                    className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-            <div className="text-xs text-muted-foreground ml-4 flex items-center">
-              Página {currentPage} de {totalPages} • {filteredData.length} registros
-            </div>
-          </div>
         )}
       </div>
 
@@ -1913,6 +1795,15 @@ export default function Custos() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={!!confirmDeleteCusto}
+        onOpenChange={(open) => { if (!open) setConfirmDeleteCusto(null); }}
+        title="Excluir Custo"
+        description={`Tem certeza que deseja excluir este custo? Essa ação não pode ser desfeita.`}
+        confirmLabel="Sim, excluir"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+      />
     </MainLayout>
   );
 }

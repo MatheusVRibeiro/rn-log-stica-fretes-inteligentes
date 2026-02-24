@@ -412,63 +412,61 @@ export default function Fretes() {
     () =>
       (fretesResponse?.data ?? [])
         .map((freteAPI) => {
-        const custosVindosDosLancamentos = getTotalCustosByFreteRef(
-          freteAPI.id,
-          freteAPI.codigo_frete
-        );
-        const custos =
-          custosVindosDosLancamentos > 0
-            ? custosVindosDosLancamentos
-            : toNumber(freteAPI.custos);
-        const receita = toNumber(freteAPI.receita);
-
-        const freteIdStr = String(freteAPI.id);
-        const isPago = pagamentosApi.some((p) => {
-          const fretes_incluidos: string | null | undefined = p.fretes_incluidos;
-          if (!fretes_incluidos) return false;
-          return (
-            p.status === "pago" &&
-            fretes_incluidos
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-              .includes(freteIdStr)
+          const custosVindosDosLancamentos = getTotalCustosByFreteRef(
+            freteAPI.id,
+            freteAPI.codigo_frete
           );
-        });
+          const custos =
+            custosVindosDosLancamentos > 0
+              ? custosVindosDosLancamentos
+              : toNumber(freteAPI.custos);
+          const receita = toNumber(freteAPI.receita);
 
-        return {
-          id: freteAPI.id,
-          codigoFrete: freteAPI.codigo_frete || undefined,
-          pagamentoId: freteAPI.pagamento_id || undefined,
-          isPago,
-          origem: freteAPI.origem,
-          destino: freteAPI.destino,
-          motorista: freteAPI.proprietario_nome || freteAPI.motorista_nome,
-          motoristaId: freteAPI.proprietario_id || freteAPI.motorista_id,
-          caminhao: freteAPI.caminhao_placa,
-          caminhaoId: freteAPI.caminhao_id,
-          mercadoria: freteAPI.mercadoria,
-          mercadoriaId: freteAPI.mercadoria_id || freteAPI.mercadoria,
-          fazendaId: freteAPI.fazenda_id || undefined,
-          fazendaNome: freteAPI.fazenda_nome || undefined,
-          variedade: freteAPI.variedade || undefined,
-          dataFrete: freteAPI.data_frete,
-          quantidadeSacas: freteAPI.quantidade_sacas,
-          toneladas: freteAPI.toneladas,
-          valorPorTonelada: freteAPI.valor_por_tonelada,
-          receita,
-          custos,
-          resultado: receita - custos,
-          ticket: freteAPI.ticket || undefined,
-        };
+          const freteIdStr = String(freteAPI.id);
+          const isPago = pagamentosApi.some((p) => {
+            const fretes_incluidos: string | null | undefined = p.fretes_incluidos;
+            if (!fretes_incluidos) return false;
+            return (
+              p.status === "pago" &&
+              fretes_incluidos
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .includes(freteIdStr)
+            );
+          });
+
+          return {
+            id: freteAPI.id,
+            codigoFrete: freteAPI.codigo_frete || undefined,
+            pagamentoId: freteAPI.pagamento_id || undefined,
+            isPago,
+            origem: freteAPI.origem,
+            destino: freteAPI.destino,
+            motorista: freteAPI.proprietario_nome || freteAPI.motorista_nome,
+            motoristaId: freteAPI.proprietario_id || freteAPI.motorista_id,
+            caminhao: freteAPI.caminhao_placa,
+            caminhaoId: freteAPI.caminhao_id,
+            mercadoria: freteAPI.mercadoria,
+            mercadoriaId: freteAPI.mercadoria_id || freteAPI.mercadoria,
+            fazendaId: freteAPI.fazenda_id || undefined,
+            fazendaNome: freteAPI.fazenda_nome || undefined,
+            variedade: freteAPI.variedade || undefined,
+            dataFrete: freteAPI.data_frete,
+            quantidadeSacas: freteAPI.quantidade_sacas,
+            toneladas: freteAPI.toneladas,
+            valorPorTonelada: freteAPI.valor_por_tonelada,
+            receita,
+            custos,
+            resultado: receita - custos,
+            ticket: freteAPI.ticket || undefined,
+          };
         })
         .sort((a, b) => {
-          const dt = dateToTimestamp(b.dataFrete) - dateToTimestamp(a.dataFrete);
-          if (dt !== 0) return dt;
           const na = codigoNumero(a.codigoFrete);
           const nb = codigoNumero(b.codigoFrete);
           if (nb !== na) return nb - na;
-          return String(b.id).localeCompare(String(a.id));
+          return Number(b.id) - Number(a.id);
         }),
     [fretesResponse?.data, custosState, pagamentosResponse?.data]
   );
@@ -478,55 +476,55 @@ export default function Fretes() {
     () =>
       (fretesAllResponse?.data ?? [])
         .map((freteAPI) => {
-        const custosVindosDosLancamentos = getTotalCustosByFreteRef(
-          freteAPI.id,
-          freteAPI.codigo_frete
-        );
-        const custos =
-          custosVindosDosLancamentos > 0
-            ? custosVindosDosLancamentos
-            : toNumber(freteAPI.custos);
-        const receita = toNumber(freteAPI.receita);
-
-        const freteIdStr = String(freteAPI.id);
-        const isPago = pagamentosApi.some((p) => {
-          const fretes_incluidos: string | null | undefined = p.fretes_incluidos;
-          if (!fretes_incluidos) return false;
-          return (
-            p.status === "pago" &&
-            fretes_incluidos
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-              .includes(freteIdStr)
+          const custosVindosDosLancamentos = getTotalCustosByFreteRef(
+            freteAPI.id,
+            freteAPI.codigo_frete
           );
-        });
+          const custos =
+            custosVindosDosLancamentos > 0
+              ? custosVindosDosLancamentos
+              : toNumber(freteAPI.custos);
+          const receita = toNumber(freteAPI.receita);
 
-        return {
-          id: freteAPI.id,
-          codigoFrete: freteAPI.codigo_frete || undefined,
-          pagamentoId: freteAPI.pagamento_id || undefined,
-          isPago,
-          origem: freteAPI.origem,
-          destino: freteAPI.destino,
-          motorista: freteAPI.proprietario_nome || freteAPI.motorista_nome,
-          motoristaId: freteAPI.proprietario_id || freteAPI.motorista_id,
-          caminhao: freteAPI.caminhao_placa,
-          caminhaoId: freteAPI.caminhao_id,
-          mercadoria: freteAPI.mercadoria,
-          mercadoriaId: freteAPI.mercadoria_id || freteAPI.mercadoria,
-          fazendaId: freteAPI.fazenda_id || undefined,
-          fazendaNome: freteAPI.fazenda_nome || undefined,
-          variedade: freteAPI.variedade || undefined,
-          dataFrete: freteAPI.data_frete,
-          quantidadeSacas: freteAPI.quantidade_sacas,
-          toneladas: freteAPI.toneladas,
-          valorPorTonelada: freteAPI.valor_por_tonelada,
-          receita,
-          custos,
-          resultado: receita - custos,
-          ticket: freteAPI.ticket || undefined,
-        };
+          const freteIdStr = String(freteAPI.id);
+          const isPago = pagamentosApi.some((p) => {
+            const fretes_incluidos: string | null | undefined = p.fretes_incluidos;
+            if (!fretes_incluidos) return false;
+            return (
+              p.status === "pago" &&
+              fretes_incluidos
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .includes(freteIdStr)
+            );
+          });
+
+          return {
+            id: freteAPI.id,
+            codigoFrete: freteAPI.codigo_frete || undefined,
+            pagamentoId: freteAPI.pagamento_id || undefined,
+            isPago,
+            origem: freteAPI.origem,
+            destino: freteAPI.destino,
+            motorista: freteAPI.proprietario_nome || freteAPI.motorista_nome,
+            motoristaId: freteAPI.proprietario_id || freteAPI.motorista_id,
+            caminhao: freteAPI.caminhao_placa,
+            caminhaoId: freteAPI.caminhao_id,
+            mercadoria: freteAPI.mercadoria,
+            mercadoriaId: freteAPI.mercadoria_id || freteAPI.mercadoria,
+            fazendaId: freteAPI.fazenda_id || undefined,
+            fazendaNome: freteAPI.fazenda_nome || undefined,
+            variedade: freteAPI.variedade || undefined,
+            dataFrete: freteAPI.data_frete,
+            quantidadeSacas: freteAPI.quantidade_sacas,
+            toneladas: freteAPI.toneladas,
+            valorPorTonelada: freteAPI.valor_por_tonelada,
+            receita,
+            custos,
+            resultado: receita - custos,
+            ticket: freteAPI.ticket || undefined,
+          };
         })
         .sort((a, b) => {
           const dt = dateToTimestamp(b.dataFrete) - dateToTimestamp(a.dataFrete);
@@ -1852,7 +1850,7 @@ export default function Fretes() {
             <Weight className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
           </div>
           <p className="text-2xl md:text-3xl font-bold text-purple-600">
-            {filteredAllData.reduce((acc, f) => acc + toNumber(f.toneladas), 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}t
+            {filteredAllData.reduce((acc, f) => acc + toNumber(f.toneladas), 0).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}t
           </p>
           <p className="text-xs md:text-sm font-medium text-purple-600/70 mt-1">
             {filteredAllData.reduce((acc, f) => acc + toNumber(f.quantidadeSacas), 0).toLocaleString("pt-BR")} sacas
@@ -2220,15 +2218,15 @@ export default function Fretes() {
 
       {/* Data Table & Pagination Extracted */}
       {!isLoadingFretes && fretesState.length > 0 && (
-              <FretesTable
-                columns={columns}
-                paginatedData={paginatedData}
-                filteredData={isFiltering ? filteredAllData : filteredData}
-                setSelectedFrete={setSelectedFrete}
-                currentPage={currentPage}
-                setCurrentPage={setCurrentPage}
-                totalPages={totalPages}
-              />
+        <FretesTable
+          columns={columns}
+          paginatedData={paginatedData}
+          filteredData={isFiltering ? filteredAllData : filteredData}
+          setSelectedFrete={setSelectedFrete}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          totalPages={totalPages}
+        />
       )}
 
       {/* Frete Detail Modal */}

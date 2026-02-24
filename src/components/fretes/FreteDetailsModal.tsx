@@ -39,7 +39,7 @@ export function FreteDetailsModal({
         if (!selectedFrete) return;
 
         // Check cached pagamentos first, fallback to API call
-        const cached = queryClient.getQueryData({ queryKey: ["pagamentos"] }) as any;
+        const cached = queryClient.getQueryData(["pagamentos"]) as any;
         let pagamentos: any[] = cached?.data || null;
 
         if (!pagamentos) {
@@ -153,7 +153,7 @@ export function FreteDetailsModal({
                                     {toNumber(selectedFrete.quantidadeSacas).toLocaleString("pt-BR")} sacas
                                 </Badge>
                                 <Badge variant="outline" className="font-medium bg-blue-500/10 text-blue-700 border-blue-500/20 px-2.5 py-1 dark:text-blue-300">
-                                    {toNumber(selectedFrete.toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} t
+                                    {toNumber(selectedFrete.toneladas).toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} t
                                 </Badge>
                                 <Badge variant="outline" className="font-medium bg-green-500/10 text-green-700 border-green-500/20 px-2.5 py-1 dark:text-green-300">
                                     R$ {toNumber(selectedFrete.valorPorTonelada).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/t
