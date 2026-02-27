@@ -1,7 +1,7 @@
 import { Dispatch, SetStateAction } from "react";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/shared/DataTable";
-import { formatFreteCodigo, toNumber } from "@/utils/formatters";
+import { formatFreteCodigo, toNumber, formatarDataBrasileira } from "@/utils/formatters";
 import {
     Pagination,
     PaginationContent,
@@ -73,7 +73,7 @@ export function FretesTable({
                             <span className="font-bold text-primary">{formatFreteCodigo(item)}</span>
                             {item.isPago && <span className="text-xs"><Badge variant="success">Pago</Badge></span>}
                         </div>
-                        <span className="text-xs text-muted-foreground">{item.dataFrete}</span>
+                        <span className="text-xs text-muted-foreground">{formatarDataBrasileira(item.dataFrete) || item.dataFrete}</span>
                     </div>
                 )}
             />

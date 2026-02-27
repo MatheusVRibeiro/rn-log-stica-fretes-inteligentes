@@ -364,6 +364,7 @@ export default function Pagamentos() {
         motoristasApi.map((motorista) => ({
           id: motorista.id,
           nome: motorista.nome,
+          documento: motorista.documento,
           tipo: motorista.tipo,
           tipoPagamento: motorista.tipo_pagamento || "pix",
           chavePixTipo: motorista.chave_pix_tipo,
@@ -405,6 +406,7 @@ export default function Pagamentos() {
       .map((motorista) => ({
         id: motorista.id,
         nome: motorista.nome,
+        documento: motorista.documento,
         tipo: motorista.tipo,
         tipoPagamento: motorista.tipo_pagamento || "pix",
         chavePixTipo: motorista.chave_pix_tipo,
@@ -422,6 +424,7 @@ export default function Pagamentos() {
       .map((f) => ({
         id: f.id,
         nome: f.nome,
+        documento: "",
         tipo: (f.tipo as Motorista["tipo"]) || "terceirizado",
         tipoPagamento: "pix" as const,
         chavePixTipo: undefined,
@@ -1038,6 +1041,8 @@ export default function Pagamentos() {
     tipoRelatorio?: "GUIA_INTERNA" | "PAGAMENTO_TERCEIRO";
   }) => {
     const dadosPagamento = getDadosPagamentoMotorista(params.motoristaId, params.metodoPagamento);
+    const motoristaRef = motoristasApi.find(m => String(m.id) === String(params.motoristaId));
+    const motoristaDocumento = motoristaRef?.documento ? formatarDocumento(motoristaRef.documento) : "";
     const normalizeRef = (value: string) =>
       String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -1085,6 +1090,7 @@ export default function Pagamentos() {
     const pdfParams: PagamentoPDFParams = {
       pagamentoId: params.pagamentoId,
       motoristaNome: params.motoristaNome,
+      motoristaDocumento,
       tipoRelatorio: params.tipoRelatorio,
       fretes: fretesParam,
       totalToneladas: Number(params.totalToneladas) || 0,

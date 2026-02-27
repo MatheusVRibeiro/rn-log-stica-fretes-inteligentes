@@ -7,6 +7,7 @@ import { abreviarRota } from "../formatters";
 export interface PagamentoPDFParams {
     pagamentoId: string;
     motoristaNome: string;
+    motoristaDocumento?: string;
     tipoRelatorio?: "GUIA_INTERNA" | "PAGAMENTO_TERCEIRO";
     fretes: {
         id: string;
@@ -109,7 +110,25 @@ export const exportarGuiaPagamentoIndividual = (params: PagamentoPDFParams) => {
         return xPos + labelWidth + doc.getTextWidth(value) + 5;
     };
 
-    printField("Nome:", params.motoristaNome, 20, dadosY);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Nome:", 20, dadosY);
+    let currX = 20 + doc.getTextWidth("Nome:") + 1;
+    doc.setFont("helvetica", "normal");
+    doc.text(params.motoristaNome, currX, dadosY);
+    currX += doc.getTextWidth(params.motoristaNome) + 2;
+
+    if (params.motoristaDocumento) {
+        doc.text("- ", currX, dadosY);
+        currX += doc.getTextWidth("- ");
+        const isCNPJ = params.motoristaDocumento.replace(/\D/g, '').length === 14;
+        const docLabel = isCNPJ ? "CNPJ:" : "CPF:";
+        doc.setFont("helvetica", "bold");
+        doc.text(docLabel, currX, dadosY);
+        currX += doc.getTextWidth(docLabel) + 1;
+        doc.setFont("helvetica", "normal");
+        doc.text(params.motoristaDocumento, currX, dadosY);
+    }
     dadosY += 6;
     printField("Método:", isGuiaInterna ? "Fechamento Interno" : dadosPagamento.metodoLabel, 20, dadosY);
 
